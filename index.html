@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Code Graph</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0e27;
+            color: #fff;
+            overflow: hidden;
+        }
+        
+        #graph {
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        .node {
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .node:hover {
+            filter: brightness(1.3);
+        }
+        
+        .node text {
+            font-size: 12px;
+            font-weight: 500;
+            pointer-events: none;
+            text-anchor: middle;
+            dominant-baseline: central;
+            fill: #fff;
+            text-shadow: 0 0 3px rgba(0,0,0,0.8);
+        }
+        
+        .link {
+            stroke: #555;
+            stroke-opacity: 0.6;
+            stroke-width: 1.5;
+            transition: all 0.3s ease;
+        }
+        
+        .link:hover {
+            stroke-opacity: 1;
+            stroke-width: 3;
+        }
+        
+        .tooltip {
+            position: absolute;
+            text-align: left;
+            padding: 10px;
+            font-size: 14px;
+            background: rgba(0, 0, 0, 0.9);
+            border: 1px solid #333;
+            border-radius: 5px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+            max-width: 300px;
+        }
+        
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid #333;
+            min-width: 250px;
+        }
+        
+        #controls h3 {
+            margin-top: 0;
+            color: #4ECDC4;
+        }
+        
+        .control-group {
+            margin: 15px 0;
+        }
+        
+        .control-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #aaa;
+            font-size: 12px;
+        }
+        
+        input[type="range"] {
+            width: 100%;
+        }
+        
+        select, input {
+            width: 100%;
+            padding: 5px;
+            background: #1a1a1a;
+            color: #fff;
+            border: 1px solid #333;
+            border-radius: 3px;
+        }
+        
+        button {
+            padding: 5px 10px;
+            background: #4ECDC4;
+            color: #000;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-weight: bold;
+            margin: 2px;
+        }
+        
+        button:hover {
+            background: #45B7D1;
+        }
+        
+        #legend {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid #333;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+            font-size: 12px;
+        }
+        
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            margin-right: 10px;
+            border: 2px solid #fff;
+        }
+        
+        #search {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid #333;
+        }
+        
+        #stats {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid #333;
+            font-size: 12px;
+        }
+        
+        .highlight {
+            stroke: #FFD700 !important;
+            stroke-width: 3 !important;
+            stroke-opacity: 1 !important;
+        }
+        
+        .dimmed {
+            opacity: 0.1;
+        }
+        
+        .selected {
+            stroke: #FFD700;
+            stroke-width: 3;
+        }
+        
+        #fileLoader {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            padding: 30px;
+            border-radius: 10px;
+            border: 1px solid #333;
+            text-align: center;
+            z-index: 1000;
+        }
+        
+        #fileLoader h2 {
+            color: #4ECDC4;
+            margin-top: 0;
+        }
+        
+        .file-input-wrapper {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+            margin: 20px 0;
+        }
+        
+        .file-input-wrapper input[type=file] {
+            position: absolute;
+            left: -9999px;
+        }
+        
+        .file-input-button {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #4ECDC4;
+            color: #000;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+        
+        .file-input-button:hover {
+            background: #45B7D1;
+        }
+        
+        #loadingMessage {
+            display: none;
+            color: #4ECDC4;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="graph"></div>
+    
+    <div id="fileLoader">
+        <h2>Load Code Graph</h2>
+        <p>Select your code_graph.json file to visualize</p>
+        <div class="file-input-wrapper">
+            <div class="file-input-button">Choose File</div>
+            <input type="file" id="fileInput" accept=".json">
+        </div>
+        <div id="loadingMessage">Loading graph...</div>
+    </div>
+    
+    <div id="controls" style="display: none;">
+        <h3>Graph Controls</h3>
+        
+        <div class="control-group">
+            <label>Node Size</label>
+            <input type="range" id="nodeSize" min="5" max="30" value="15">
+        </div>
+        
+        <div class="control-group">
+            <label>Link Distance</label>
+            <input type="range" id="linkDistance" min="50" max="300" value="100">
+        </div>
+        
+        <div class="control-group">
+            <label>Charge Strength</label>
+            <input type="range" id="chargeStrength" min="-500" max="-50" value="-200">
+        </div>
+        
+        <div class="control-group">
+            <label>Filter by Type</label>
+            <select id="typeFilter">
+                <option value="all">All Types</option>
+            </select>
+        </div>
+        
+        <div class="control-group">
+            <button id="resetView">Reset View</button>
+            <button id="toggleLabels">Toggle Labels</button>
+        </div>
+    </div>
+    
+    <div id="search" style="display: none;">
+        <input type="text" id="searchInput" placeholder="Search nodes...">
+    </div>
+    
+    <div id="legend" style="display: none;">
+        <h4 style="margin-top: 0; color: #4ECDC4;">Node Types</h4>
+        <div id="legendContent"></div>
+    </div>
+    
+    <div id="stats" style="display: none;">
+        <div id="statsContent"></div>
+    </div>
+    
+    <div class="tooltip"></div>
+    
+    <script>
+        // Configuration
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        const nodeColors = {
+            'file': '#FF6B6B',
+            'class': '#4ECDC4',
+            'interface': '#00CED1',
+            'method': '#45B7D1',
+            'function': '#96CEB4',
+            'variable': '#FECA57',
+            'import': '#DDA0DD',
+            'module': '#98D8C8',
+            'package': '#FFB6C1'
+        };
+        
+        let showLabels = true;
+        let simulation;
+        let svg, g, link, node, label;
+        let graphData = { nodes: [], edges: [] };
+        
+        // Create SVG
+        svg = d3.select("#graph")
+            .append("svg")
+            .attr("width", width)
+            .attr("height", height);
+        
+        // Add zoom behavior
+        const zoom = d3.zoom()
+            .scaleExtent([0.1, 10])
+            .on("zoom", (event) => {
+                g.attr("transform", event.transform);
+            });
+        
+        svg.call(zoom);
+        
+        // Create main group
+        g = svg.append("g");
+        
+        // Create tooltip
+        const tooltip = d3.select(".tooltip");
+        
+        // File input handler
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                document.getElementById('loadingMessage').style.display = 'block';
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const data = JSON.parse(e.target.result);
+                        processData(data);
+                        document.getElementById('fileLoader').style.display = 'none';
+                        document.getElementById('controls').style.display = 'block';
+                        document.getElementById('search').style.display = 'block';
+                        document.getElementById('legend').style.display = 'block';
+                        document.getElementById('stats').style.display = 'block';
+                    } catch (error) {
+                        alert('Error parsing JSON file: ' + error.message);
+                        document.getElementById('loadingMessage').style.display = 'none';
+                    }
+                };
+                reader.readAsText(file);
+            }
+        });
+        
+        // Also try to load code_graph.json automatically
+        fetch('code_graph.json')
+            .then(response => response.json())
+            .then(data => {
+                processData(data);
+                document.getElementById('fileLoader').style.display = 'none';
+                document.getElementById('controls').style.display = 'block';
+                document.getElementById('search').style.display = 'block';
+                document.getElementById('legend').style.display = 'block';
+                document.getElementById('stats').style.display = 'block';
+            })
+            .catch(error => {
+                console.log('Auto-load failed, waiting for manual file selection');
+            });
+        
+        function processData(data) {
+            // Convert nodes
+            graphData.nodes = data.nodes.map(n => ({
+                id: n.id,
+                name: n.name,
+                type: n.type,
+                file: n.file,
+                line: n.line
+            }));
+            
+            // Convert edges
+            graphData.edges = data.edges.map(e => ({
+                source: e.source,
+                target: e.target,
+                type: e.type
+            }));
+            
+            console.log(`Loaded ${graphData.nodes.length} nodes and ${graphData.edges.length} edges`);
+            
+            // Update UI
+            updateTypeFilter();
+            updateLegend();
+            updateStats();
+            
+            // Initialize graph
+            initializeGraph();
+        }
+        
+        function initializeGraph() {
+            // Clear any existing graph
+            g.selectAll("*").remove();
+            
+            // Create force simulation
+            simulation = d3.forceSimulation(graphData.nodes)
+                .force("link", d3.forceLink(graphData.edges)
+                    .id(d => d.id)
+                    .distance(100))
+                .force("charge", d3.forceManyBody().strength(-200))
+                .force("center", d3.forceCenter(width / 2, height / 2))
+                .force("collision", d3.forceCollide().radius(20));
+            
+            // Create arrow markers
+            svg.append("defs").append("marker")
+                .attr("id", "arrowhead")
+                .attr("viewBox", "-0 -5 10 10")
+                .attr("refX", 20)
+                .attr("refY", 0)
+                .attr("orient", "auto")
+                .attr("markerWidth", 10)
+                .attr("markerHeight", 10)
+                .append("svg:path")
+                .attr("d", "M 0,-5 L 10,0 L 0,5")
+                .attr("fill", "#555");
+            
+            // Create links
+            link = g.append("g")
+                .attr("class", "links")
+                .selectAll("line")
+                .data(graphData.edges)
+                .enter().append("line")
+                .attr("class", "link")
+                .attr("marker-end", "url(#arrowhead)");
+            
+            // Create nodes
+            node = g.append("g")
+                .attr("class", "nodes")
+                .selectAll("circle")
+                .data(graphData.nodes)
+                .enter().append("circle")
+                .attr("class", "node")
+                .attr("r", 15)
+                .attr("fill", d => nodeColors[d.type] || '#999')
+                .call(drag(simulation))
+                .on("mouseover", handleMouseOver)
+                .on("mouseout", handleMouseOut)
+                .on("click", handleClick);
+            
+            // Create labels
+            label = g.append("g")
+                .attr("class", "labels")
+                .selectAll("text")
+                .data(graphData.nodes)
+                .enter().append("text")
+                .attr("class", "label")
+                .text(d => d.name)
+                .style("display", showLabels ? "block" : "none");
+            
+            // Update positions on tick
+            simulation.on("tick", () => {
+                link
+                    .attr("x1", d => d.source.x)
+                    .attr("y1", d => d.source.y)
+                    .attr("x2", d => d.target.x)
+                    .attr("y2", d => d.target.y);
+                
+                node
+                    .attr("cx", d => d.x)
+                    .attr("cy", d => d.y);
+                
+                label
+                    .attr("x", d => d.x)
+                    .attr("y", d => d.y);
+            });
+        }
+        
+        // Drag behavior
+        function drag(simulation) {
+            function dragstarted(event) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                event.subject.fx = event.subject.x;
+                event.subject.fy = event.subject.y;
+            }
+            
+            function dragged(event) {
+                event.subject.fx = event.x;
+                event.subject.fy = event.y;
+            }
+            
+            function dragended(event) {
+                if (!event.active) simulation.alphaTarget(0);
+                event.subject.fx = null;
+                event.subject.fy = null;
+            }
+            
+            return d3.drag()
+                .on("start", dragstarted)
+                .on("drag", dragged)
+                .on("end", dragended);
+        }
+        
+        // Mouse events
+        function handleMouseOver(event, d) {
+            // Highlight connected nodes and edges
+            const connectedNodes = new Set();
+            const connectedEdges = new Set();
+            
+            graphData.edges.forEach(e => {
+                if (e.source.id === d.id || e.target.id === d.id) {
+                    connectedNodes.add(e.source.id);
+                    connectedNodes.add(e.target.id);
+                    connectedEdges.add(e);
+                }
+            });
+            
+            node.classed("dimmed", n => !connectedNodes.has(n.id));
+            link.classed("dimmed", e => !connectedEdges.has(e));
+            link.classed("highlight", e => connectedEdges.has(e));
+            
+            // Show tooltip
+            tooltip
+                .style("opacity", 1)
+                .html(`
+                    <strong>${d.name}</strong><br>
+                    Type: ${d.type}<br>
+                    File: ${d.file}<br>
+                    Line: ${d.line}
+                `)
+                .style("left", (event.pageX + 10) + "px")
+                .style("top", (event.pageY - 10) + "px");
+        }
+        
+        function handleMouseOut() {
+            node.classed("dimmed", false);
+            link.classed("dimmed", false);
+            link.classed("highlight", false);
+            tooltip.style("opacity", 0);
+        }
+        
+        function handleClick(event, d) {
+            event.stopPropagation();
+            
+            // Toggle selection
+            const isSelected = d3.select(this).classed("selected");
+            node.classed("selected", false);
+            d3.select(this).classed("selected", !isSelected);
+            
+            if (!isSelected) {
+                console.log("Selected node:", d);
+            }
+        }
+        
+        // Control handlers
+        document.getElementById("nodeSize").addEventListener("input", function() {
+            node.attr("r", this.value);
+        });
+        
+        document.getElementById("linkDistance").addEventListener("input", function() {
+            simulation.force("link").distance(+this.value);
+            simulation.alpha(0.3).restart();
+        });
+        
+        document.getElementById("chargeStrength").addEventListener("input", function() {
+            simulation.force("charge").strength(+this.value);
+            simulation.alpha(0.3).restart();
+        });
+        
+        document.getElementById("typeFilter").addEventListener("change", function() {
+            const filterType = this.value;
+            
+            if (filterType === "all") {
+                node.style("display", "block");
+                label.style("display", showLabels ? "block" : "none");
+            } else {
+                node.style("display", d => d.type === filterType ? "block" : "none");
+                label.style("display", d => d.type === filterType && showLabels ? "block" : "none");
+            }
+            
+            // Hide links connected to hidden nodes
+            link.style("display", e => {
+                const sourceVisible = filterType === "all" || e.source.type === filterType;
+                const targetVisible = filterType === "all" || e.target.type === filterType;
+                return sourceVisible && targetVisible ? "block" : "none";
+            });
+        });
+        
+        document.getElementById("resetView").addEventListener("click", function() {
+            svg.transition().duration(750).call(
+                zoom.transform,
+                d3.zoomIdentity.translate(0, 0).scale(1)
+            );
+        });
+        
+        document.getElementById("toggleLabels").addEventListener("click", function() {
+            showLabels = !showLabels;
+            label.style("display", showLabels ? "block" : "none");
+        });
+        
+        document.getElementById("searchInput").addEventListener("input", function() {
+            const searchTerm = this.value.toLowerCase();
+            
+            if (searchTerm) {
+                node.classed("dimmed", d => !d.name.toLowerCase().includes(searchTerm));
+                label.classed("dimmed", d => !d.name.toLowerCase().includes(searchTerm));
+            } else {
+                node.classed("dimmed", false);
+                label.classed("dimmed", false);
+            }
+        });
+        
+        // UI Updates
+        function updateTypeFilter() {
+            const types = [...new Set(graphData.nodes.map(n => n.type))];
+            const select = document.getElementById("typeFilter");
+            
+            // Clear existing options except "All Types"
+            select.innerHTML = '<option value="all">All Types</option>';
+            
+            types.forEach(type => {
+                const option = document.createElement("option");
+                option.value = type;
+                option.textContent = type.charAt(0).toUpperCase() + type.slice(1);
+                select.appendChild(option);
+            });
+        }
+        
+        function updateLegend() {
+            const legendContent = document.getElementById("legendContent");
+            legendContent.innerHTML = ''; // Clear existing
+            const types = [...new Set(graphData.nodes.map(n => n.type))];
+            
+            types.forEach(type => {
+                const item = document.createElement("div");
+                item.className = "legend-item";
+                item.innerHTML = `
+                    <div class="legend-color" style="background: ${nodeColors[type] || '#999'}"></div>
+                    <span>${type.charAt(0).toUpperCase() + type.slice(1)}</span>
+                `;
+                legendContent.appendChild(item);
+            });
+        }
+        
+        function updateStats() {
+            const stats = {
+                nodes: graphData.nodes.length,
+                edges: graphData.edges.length,
+                nodeTypes: {}
+            };
+            
+            graphData.nodes.forEach(n => {
+                stats.nodeTypes[n.type] = (stats.nodeTypes[n.type] || 0) + 1;
+            });
+            
+            let statsHtml = `
+                <strong>Graph Statistics</strong><br>
+                Nodes: ${stats.nodes}<br>
+                Edges: ${stats.edges}<br>
+                <br>
+            `;
+            
+            for (const [type, count] of Object.entries(stats.nodeTypes)) {
+                statsHtml += `${type}: ${count}<br>`;
+            }
+            
+            document.getElementById("statsContent").innerHTML = statsHtml;
+        }
+        
+        // Keyboard shortcuts
+        document.addEventListener("keydown", function(e) {
+            if (e.key === "l" || e.key === "L") {
+                document.getElementById("toggleLabels").click();
+            } else if (e.key === "r" || e.key === "R") {
+                document.getElementById("resetView").click();
+            } else if (e.key === "/" || e.key === "f" || e.key === "F") {
+                e.preventDefault();
+                document.getElementById("searchInput").focus();
+            }
+        });
+    </script>
+</body>
+</html>
