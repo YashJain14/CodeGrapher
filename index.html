@@ -1,23 +1,78 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Interactive Code Graph</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <meta charset="utf-8">
+    <title>Interactive Code Graph Viewer</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
         body {
             margin: 0;
-            padding: 0;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #0a0e27;
+            background: #1a1a1a;
             color: #fff;
             overflow: hidden;
         }
         
-        #graph {
+        #container {
             width: 100vw;
             height: 100vh;
+            position: relative;
+        }
+        
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            z-index: 1000;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        #info {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            max-width: 350px;
+            z-index: 1000;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        #fileInput {
+            display: none;
+        }
+        
+        .load-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-bottom: 15px;
+            font-size: 14px;
+            font-weight: 500;
+            width: 100%;
+            transition: transform 0.2s;
+        }
+        
+        .load-button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        h3 {
+            margin-top: 0;
+            color: #fff;
+            font-weight: 600;
         }
         
         .node {
@@ -25,109 +80,161 @@
             transition: all 0.3s ease;
         }
         
-        .node:hover {
-            filter: brightness(1.3);
+        .node:hover circle {
+            filter: brightness(1.2);
+            stroke-width: 3;
         }
         
-        .node text {
-            font-size: 12px;
-            font-weight: 500;
+        .node-label {
+            font-size: 11px;
             pointer-events: none;
-            text-anchor: middle;
-            dominant-baseline: central;
             fill: #fff;
             text-shadow: 0 0 3px rgba(0,0,0,0.8);
         }
         
         .link {
-            stroke: #555;
-            stroke-opacity: 0.6;
-            stroke-width: 1.5;
-            transition: all 0.3s ease;
+            fill: none;
+            stroke-opacity: 0.4;
+            transition: stroke-opacity 0.3s;
         }
         
         .link:hover {
-            stroke-opacity: 1;
-            stroke-width: 3;
+            stroke-opacity: 0.8;
+        }
+        
+        .link-contains {
+            stroke: #666;
+            stroke-width: 1;
+        }
+        
+        .link-inherits {
+            stroke: #ff6b6b;
+            stroke-width: 2;
+            stroke-dasharray: 5,5;
+        }
+        
+        .link-implements {
+            stroke: #4ecdc4;
+            stroke-width: 2;
+            stroke-dasharray: 2,2;
+        }
+        
+        .link-calls {
+            stroke: #45b7d1;
+            stroke-width: 1.5;
+        }
+        
+        .container {
+            fill-opacity: 0.05;
+            stroke-width: 2;
+            rx: 15;
+            ry: 15;
+            transition: all 0.3s;
+        }
+        
+        .container:hover {
+            fill-opacity: 0.1;
+        }
+        
+        .container-file {
+            fill: #ff6b6b;
+            stroke: #ff6b6b;
+            stroke-dasharray: 5,5;
+        }
+        
+        .container-class {
+            fill: #4ecdc4;
+            stroke: #4ecdc4;
+        }
+        
+        button {
+            margin: 3px;
+            padding: 8px 15px;
+            border: none;
+            border-radius: 5px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-1px);
+        }
+        
+        #search {
+            width: 100%;
+            padding: 8px 12px;
+            margin-bottom: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 5px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            font-size: 14px;
+        }
+        
+        #search::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+        
+        label {
+            display: block;
+            margin: 5px 0;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        
+        input[type="checkbox"] {
+            margin-right: 8px;
+            cursor: pointer;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 15px;
+        }
+        
+        #nodeInfo {
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        #nodeInfo strong {
+            color: #4ecdc4;
         }
         
         .tooltip {
             position: absolute;
-            text-align: left;
             padding: 10px;
-            font-size: 14px;
             background: rgba(0, 0, 0, 0.9);
-            border: 1px solid #333;
             border-radius: 5px;
+            font-size: 12px;
             pointer-events: none;
             opacity: 0;
             transition: opacity 0.3s;
-            max-width: 300px;
+            z-index: 2000;
         }
         
-        #controls {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            background: rgba(0, 0, 0, 0.8);
-            padding: 20px;
-            border-radius: 10px;
-            border: 1px solid #333;
-            min-width: 250px;
+        #stats {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 13px;
         }
         
-        #controls h3 {
-            margin-top: 0;
-            color: #4ECDC4;
-        }
-        
-        .control-group {
-            margin: 15px 0;
-        }
-        
-        .control-group label {
-            display: block;
-            margin-bottom: 5px;
-            color: #aaa;
-            font-size: 12px;
-        }
-        
-        input[type="range"] {
-            width: 100%;
-        }
-        
-        select, input {
-            width: 100%;
-            padding: 5px;
-            background: #1a1a1a;
-            color: #fff;
-            border: 1px solid #333;
-            border-radius: 3px;
-        }
-        
-        button {
-            padding: 5px 10px;
-            background: #4ECDC4;
-            color: #000;
-            border: none;
-            border-radius: 3px;
-            cursor: pointer;
-            font-weight: bold;
-            margin: 2px;
-        }
-        
-        button:hover {
-            background: #45B7D1;
-        }
-        
-        #legend {
+        .legend {
             position: absolute;
             bottom: 20px;
             left: 20px;
-            background: rgba(0, 0, 0, 0.8);
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
             padding: 15px;
             border-radius: 10px;
-            border: 1px solid #333;
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
         
         .legend-item {
@@ -137,166 +244,123 @@
             font-size: 12px;
         }
         
+        .legend-item svg {
+            display: inline-block;
+            vertical-align: middle;
+        }
+        
         .legend-color {
             width: 20px;
             height: 20px;
             border-radius: 50%;
             margin-right: 10px;
-            border: 2px solid #fff;
-        }
-        
-        #search {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            background: rgba(0, 0, 0, 0.8);
-            padding: 15px;
-            border-radius: 10px;
-            border: 1px solid #333;
-        }
-        
-        #stats {
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
-            background: rgba(0, 0, 0, 0.8);
-            padding: 15px;
-            border-radius: 10px;
-            border: 1px solid #333;
-            font-size: 12px;
-        }
-        
-        .highlight {
-            stroke: #FFD700 !important;
-            stroke-width: 3 !important;
-            stroke-opacity: 1 !important;
-        }
-        
-        .dimmed {
-            opacity: 0.1;
-        }
-        
-        .selected {
-            stroke: #FFD700;
-            stroke-width: 3;
-        }
-        
-        #fileLoader {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(0, 0, 0, 0.9);
-            padding: 30px;
-            border-radius: 10px;
-            border: 1px solid #333;
-            text-align: center;
-            z-index: 1000;
-        }
-        
-        #fileLoader h2 {
-            color: #4ECDC4;
-            margin-top: 0;
-        }
-        
-        .file-input-wrapper {
-            position: relative;
-            overflow: hidden;
             display: inline-block;
-            margin: 20px 0;
-        }
-        
-        .file-input-wrapper input[type=file] {
-            position: absolute;
-            left: -9999px;
-        }
-        
-        .file-input-button {
-            display: inline-block;
-            padding: 10px 20px;
-            background: #4ECDC4;
-            color: #000;
-            border-radius: 5px;
-            cursor: pointer;
-            font-weight: bold;
-            transition: background 0.3s;
-        }
-        
-        .file-input-button:hover {
-            background: #45B7D1;
-        }
-        
-        #loadingMessage {
-            display: none;
-            color: #4ECDC4;
-            margin-top: 20px;
         }
     </style>
 </head>
 <body>
-    <div id="graph"></div>
-    
-    <div id="fileLoader">
-        <h2>Load Code Graph</h2>
-        <p>Select your code_graph.json file to visualize</p>
-        <div class="file-input-wrapper">
-            <div class="file-input-button">Choose File</div>
+    <div id="container">
+        <svg id="graph"></svg>
+        
+        <div id="controls">
             <input type="file" id="fileInput" accept=".json">
+            <button class="load-button" onclick="document.getElementById('fileInput').click()">
+                Load code_graph.json
+            </button>
+            
+            <input type="text" id="search" placeholder="Search nodes...">
+            
+            <div class="button-group">
+                <button onclick="zoomIn()">Zoom In</button>
+                <button onclick="zoomOut()">Zoom Out</button>
+                <button onclick="resetZoom()">Reset</button>
+            </div>
+            
+            <div class="button-group">
+                <button onclick="toggleForce()">Toggle Physics</button>
+                <button onclick="centerGraph()">Center</button>
+                <button onclick="highlightCrossFileConnections()">Show Cross-File Links</button>
+            </div>
+            
+            <div style="margin-top: 15px;">
+                <label><input type="checkbox" id="showFiles" checked> Files</label>
+                <label><input type="checkbox" id="showClasses" checked> Classes</label>
+                <label><input type="checkbox" id="showMethods" checked> Methods</label>
+                <label><input type="checkbox" id="showFunctions" checked> Functions</label>
+                <label><input type="checkbox" id="showImports" checked> Imports</label>
+            </div>
+            
+            <div id="stats"></div>
         </div>
-        <div id="loadingMessage">Loading graph...</div>
-    </div>
-    
-    <div id="controls" style="display: none;">
-        <h3>Graph Controls</h3>
         
-        <div class="control-group">
-            <label>Node Size</label>
-            <input type="range" id="nodeSize" min="5" max="30" value="15">
+        <div id="info">
+            <h3>Node Information</h3>
+            <div id="nodeInfo">Click on a node to see details</div>
         </div>
         
-        <div class="control-group">
-            <label>Link Distance</label>
-            <input type="range" id="linkDistance" min="50" max="300" value="100">
+        <div class="legend">
+            <h4 style="margin-top: 0;">Legend</h4>
+            <div style="margin-bottom: 10px;">
+                <strong>Nodes:</strong>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #FF6B6B;"></div>
+                <span>File</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #4ECDC4;"></div>
+                <span>Class</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #45B7D1;"></div>
+                <span>Method</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #96CEB4;"></div>
+                <span>Function</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #DDA0DD;"></div>
+                <span>Import</span>
+            </div>
+            <div style="margin-top: 10px; margin-bottom: 10px;">
+                <strong>Connections:</strong>
+            </div>
+            <div class="legend-item">
+                <svg width="30" height="2" style="margin-right: 10px;"><line x1="0" y1="1" x2="30" y2="1" stroke="#45b7d1" stroke-width="2"/></svg>
+                <span>Calls</span>
+            </div>
+            <div class="legend-item">
+                <svg width="30" height="2" style="margin-right: 10px;"><line x1="0" y1="1" x2="30" y2="1" stroke="#ffa500" stroke-width="2"/></svg>
+                <span>Creates/Uses</span>
+            </div>
+            <div class="legend-item">
+                <svg width="30" height="2" style="margin-right: 10px;"><line x1="0" y1="1" x2="30" y2="1" stroke="#ff6b6b" stroke-width="2" stroke-dasharray="5,5"/></svg>
+                <span>Inherits</span>
+            </div>
+            <div class="legend-item">
+                <svg width="30" height="2" style="margin-right: 10px;"><line x1="0" y1="1" x2="30" y2="1" stroke="#4ecdc4" stroke-width="2" stroke-dasharray="2,2"/></svg>
+                <span>Implements</span>
+            </div>
         </div>
         
-        <div class="control-group">
-            <label>Charge Strength</label>
-            <input type="range" id="chargeStrength" min="-500" max="-50" value="-200">
-        </div>
-        
-        <div class="control-group">
-            <label>Filter by Type</label>
-            <select id="typeFilter">
-                <option value="all">All Types</option>
-            </select>
-        </div>
-        
-        <div class="control-group">
-            <button id="resetView">Reset View</button>
-            <button id="toggleLabels">Toggle Labels</button>
-        </div>
+        <div class="tooltip"></div>
     </div>
-    
-    <div id="search" style="display: none;">
-        <input type="text" id="searchInput" placeholder="Search nodes...">
-    </div>
-    
-    <div id="legend" style="display: none;">
-        <h4 style="margin-top: 0; color: #4ECDC4;">Node Types</h4>
-        <div id="legendContent"></div>
-    </div>
-    
-    <div id="stats" style="display: none;">
-        <div id="statsContent"></div>
-    </div>
-    
-    <div class="tooltip"></div>
     
     <script>
-        // Configuration
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-        const nodeColors = {
+        // Global variables
+        let graphData = null;
+        let simulation = null;
+        let svg = null;
+        let g = null;
+        let zoom = null;
+        let forceEnabled = true;
+        let nodes = [];
+        let links = [];
+        let nodeMap = new Map();
+        
+        // Color mapping
+        const colorMap = {
             'file': '#FF6B6B',
             'class': '#4ECDC4',
             'interface': '#00CED1',
@@ -308,378 +372,592 @@
             'package': '#FFB6C1'
         };
         
-        let showLabels = true;
-        let simulation;
-        let svg, g, link, node, label;
-        let graphData = { nodes: [], edges: [] };
-        
-        // Create SVG
-        svg = d3.select("#graph")
-            .append("svg")
-            .attr("width", width)
-            .attr("height", height);
-        
-        // Add zoom behavior
-        const zoom = d3.zoom()
-            .scaleExtent([0.1, 10])
-            .on("zoom", (event) => {
-                g.attr("transform", event.transform);
-            });
-        
-        svg.call(zoom);
-        
-        // Create main group
-        g = svg.append("g");
-        
-        // Create tooltip
-        const tooltip = d3.select(".tooltip");
-        
         // File input handler
         document.getElementById('fileInput').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (file) {
-                document.getElementById('loadingMessage').style.display = 'block';
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     try {
-                        const data = JSON.parse(e.target.result);
-                        processData(data);
-                        document.getElementById('fileLoader').style.display = 'none';
-                        document.getElementById('controls').style.display = 'block';
-                        document.getElementById('search').style.display = 'block';
-                        document.getElementById('legend').style.display = 'block';
-                        document.getElementById('stats').style.display = 'block';
+                        graphData = JSON.parse(e.target.result);
+                        initializeGraph();
+                        updateStats();
                     } catch (error) {
-                        alert('Error parsing JSON file: ' + error.message);
-                        document.getElementById('loadingMessage').style.display = 'none';
+                        alert('Error loading JSON file: ' + error.message);
                     }
                 };
                 reader.readAsText(file);
             }
         });
         
-        // Also try to load code_graph.json automatically
-        fetch('code_graph.json')
-            .then(response => response.json())
-            .then(data => {
-                processData(data);
-                document.getElementById('fileLoader').style.display = 'none';
-                document.getElementById('controls').style.display = 'block';
-                document.getElementById('search').style.display = 'block';
-                document.getElementById('legend').style.display = 'block';
-                document.getElementById('stats').style.display = 'block';
-            })
-            .catch(error => {
-                console.log('Auto-load failed, waiting for manual file selection');
-            });
-        
-        function processData(data) {
-            // Convert nodes
-            graphData.nodes = data.nodes.map(n => ({
-                id: n.id,
-                name: n.name,
-                type: n.type,
-                file: n.file,
-                line: n.line
-            }));
-            
-            // Convert edges
-            graphData.edges = data.edges.map(e => ({
-                source: e.source,
-                target: e.target,
-                type: e.type
-            }));
-            
-            console.log(`Loaded ${graphData.nodes.length} nodes and ${graphData.edges.length} edges`);
-            
-            // Update UI
-            updateTypeFilter();
-            updateLegend();
-            updateStats();
-            
-            // Initialize graph
-            initializeGraph();
-        }
-        
         function initializeGraph() {
-            // Clear any existing graph
-            g.selectAll("*").remove();
+            // Clear existing graph
+            d3.select('#graph').selectAll('*').remove();
             
-            // Create force simulation
-            simulation = d3.forceSimulation(graphData.nodes)
-                .force("link", d3.forceLink(graphData.edges)
-                    .id(d => d.id)
-                    .distance(100))
-                .force("charge", d3.forceManyBody().strength(-200))
-                .force("center", d3.forceCenter(width / 2, height / 2))
-                .force("collision", d3.forceCollide().radius(20));
+            const width = window.innerWidth;
+            const height = window.innerHeight;
             
-            // Create arrow markers
-            svg.append("defs").append("marker")
-                .attr("id", "arrowhead")
-                .attr("viewBox", "-0 -5 10 10")
-                .attr("refX", 20)
-                .attr("refY", 0)
-                .attr("orient", "auto")
-                .attr("markerWidth", 10)
-                .attr("markerHeight", 10)
-                .append("svg:path")
-                .attr("d", "M 0,-5 L 10,0 L 0,5")
-                .attr("fill", "#555");
+            // Create SVG
+            svg = d3.select('#graph')
+                .attr('width', width)
+                .attr('height', height);
             
-            // Create links
-            link = g.append("g")
-                .attr("class", "links")
-                .selectAll("line")
-                .data(graphData.edges)
-                .enter().append("line")
-                .attr("class", "link")
-                .attr("marker-end", "url(#arrowhead)");
+            // Add zoom behavior
+            zoom = d3.zoom()
+                .scaleExtent([0.1, 10])
+                .on('zoom', (event) => {
+                    g.attr('transform', event.transform);
+                });
             
-            // Create nodes
-            node = g.append("g")
-                .attr("class", "nodes")
-                .selectAll("circle")
-                .data(graphData.nodes)
-                .enter().append("circle")
-                .attr("class", "node")
-                .attr("r", 15)
-                .attr("fill", d => nodeColors[d.type] || '#999')
-                .call(drag(simulation))
-                .on("mouseover", handleMouseOver)
-                .on("mouseout", handleMouseOut)
-                .on("click", handleClick);
+            svg.call(zoom);
             
-            // Create labels
-            label = g.append("g")
-                .attr("class", "labels")
-                .selectAll("text")
-                .data(graphData.nodes)
-                .enter().append("text")
-                .attr("class", "label")
-                .text(d => d.name)
-                .style("display", showLabels ? "block" : "none");
-            
-            // Update positions on tick
-            simulation.on("tick", () => {
-                link
-                    .attr("x1", d => d.source.x)
-                    .attr("y1", d => d.source.y)
-                    .attr("x2", d => d.target.x)
-                    .attr("y2", d => d.target.y);
-                
-                node
-                    .attr("cx", d => d.x)
-                    .attr("cy", d => d.y);
-                
-                label
-                    .attr("x", d => d.x)
-                    .attr("y", d => d.y);
-            });
-        }
-        
-        // Drag behavior
-        function drag(simulation) {
-            function dragstarted(event) {
-                if (!event.active) simulation.alphaTarget(0.3).restart();
-                event.subject.fx = event.subject.x;
-                event.subject.fy = event.subject.y;
-            }
-            
-            function dragged(event) {
-                event.subject.fx = event.x;
-                event.subject.fy = event.y;
-            }
-            
-            function dragended(event) {
-                if (!event.active) simulation.alphaTarget(0);
-                event.subject.fx = null;
-                event.subject.fy = null;
-            }
-            
-            return d3.drag()
-                .on("start", dragstarted)
-                .on("drag", dragged)
-                .on("end", dragended);
-        }
-        
-        // Mouse events
-        function handleMouseOver(event, d) {
-            // Highlight connected nodes and edges
-            const connectedNodes = new Set();
-            const connectedEdges = new Set();
-            
-            graphData.edges.forEach(e => {
-                if (e.source.id === d.id || e.target.id === d.id) {
-                    connectedNodes.add(e.source.id);
-                    connectedNodes.add(e.target.id);
-                    connectedEdges.add(e);
+            // Add background click handler to reset highlighting
+            svg.on('click', function(event) {
+                if (event.target === this || event.target.tagName === 'svg') {
+                    // Clicked on background, reset highlighting
+                    d3.selectAll('.node').style('opacity', 1);
+                    d3.selectAll('.link')
+                        .style('opacity', 0.4)
+                        .style('stroke-width', null); // Reset to default
+                    document.getElementById('nodeInfo').innerHTML = 'Click on a node to see details';
                 }
             });
             
-            node.classed("dimmed", n => !connectedNodes.has(n.id));
-            link.classed("dimmed", e => !connectedEdges.has(e));
-            link.classed("highlight", e => connectedEdges.has(e));
+            // Create main group
+            g = svg.append('g');
             
-            // Show tooltip
-            tooltip
-                .style("opacity", 1)
-                .html(`
-                    <strong>${d.name}</strong><br>
-                    Type: ${d.type}<br>
-                    File: ${d.file}<br>
-                    Line: ${d.line}
-                `)
-                .style("left", (event.pageX + 10) + "px")
-                .style("top", (event.pageY - 10) + "px");
-        }
-        
-        function handleMouseOut() {
-            node.classed("dimmed", false);
-            link.classed("dimmed", false);
-            link.classed("highlight", false);
-            tooltip.style("opacity", 0);
-        }
-        
-        function handleClick(event, d) {
-            event.stopPropagation();
+            // Process data
+            nodes = [];
+            links = [];
+            nodeMap.clear();
             
-            // Toggle selection
-            const isSelected = d3.select(this).classed("selected");
-            node.classed("selected", false);
-            d3.select(this).classed("selected", !isSelected);
-            
-            if (!isSelected) {
-                console.log("Selected node:", d);
-            }
-        }
-        
-        // Control handlers
-        document.getElementById("nodeSize").addEventListener("input", function() {
-            node.attr("r", this.value);
-        });
-        
-        document.getElementById("linkDistance").addEventListener("input", function() {
-            simulation.force("link").distance(+this.value);
-            simulation.alpha(0.3).restart();
-        });
-        
-        document.getElementById("chargeStrength").addEventListener("input", function() {
-            simulation.force("charge").strength(+this.value);
-            simulation.alpha(0.3).restart();
-        });
-        
-        document.getElementById("typeFilter").addEventListener("change", function() {
-            const filterType = this.value;
-            
-            if (filterType === "all") {
-                node.style("display", "block");
-                label.style("display", showLabels ? "block" : "none");
+            // Use hierarchical data if available, otherwise use flat structure
+            if (graphData.hierarchical) {
+                function processNode(node, parent = null, depth = 0) {
+                    const d3Node = {
+                        id: node.id,
+                        name: node.name,
+                        type: node.type,
+                        file: node.file,
+                        line: node.line,
+                        parent: parent,
+                        children: [],
+                        depth: depth,
+                        x: Math.random() * width,
+                        y: Math.random() * height
+                    };
+                    
+                    nodes.push(d3Node);
+                    nodeMap.set(node.id, d3Node);
+                    
+                    if (parent) {
+                        links.push({
+                            source: parent.id,
+                            target: node.id,
+                            type: 'contains'
+                        });
+                    }
+                    
+                    if (node.children) {
+                        node.children.forEach(child => processNode(child, d3Node, depth + 1));
+                    }
+                }
+                
+                graphData.hierarchical.forEach(root => processNode(root));
             } else {
-                node.style("display", d => d.type === filterType ? "block" : "none");
-                label.style("display", d => d.type === filterType && showLabels ? "block" : "none");
+                // Fallback to flat structure
+                graphData.nodes.forEach(node => {
+                    const d3Node = {
+                        id: node.id,
+                        name: node.name,
+                        type: node.type,
+                        file: node.file,
+                        line: node.line,
+                        parent: node.parent_id ? nodeMap.get(node.parent_id) : null,
+                        x: Math.random() * width,
+                        y: Math.random() * height
+                    };
+                    nodes.push(d3Node);
+                    nodeMap.set(node.id, d3Node);
+                });
             }
             
-            // Hide links connected to hidden nodes
-            link.style("display", e => {
-                const sourceVisible = filterType === "all" || e.source.type === filterType;
-                const targetVisible = filterType === "all" || e.target.type === filterType;
-                return sourceVisible && targetVisible ? "block" : "none";
+            // Add edges, filtering out invalid ones
+            if (graphData.edges) {
+                graphData.edges.forEach(edge => {
+                    // Only add edges where both nodes exist
+                    if (nodeMap.has(edge.source) && nodeMap.has(edge.target)) {
+                        links.push(edge);
+                    }
+                });
+            }
+            
+            // Display external dependencies info if present
+            if (graphData.external_dependencies && graphData.external_dependencies.length > 0) {
+                console.log(`Found ${graphData.external_dependencies.length} external dependencies`);
+                const extDeps = {};
+                graphData.external_dependencies.forEach(dep => {
+                    extDeps[dep.target] = (extDeps[dep.target] || 0) + 1;
+                });
+                console.log('External dependencies:', extDeps);
+            }
+            
+            // Create force simulation
+            simulation = d3.forceSimulation(nodes)
+                .force('link', d3.forceLink(links)
+                    .id(d => d.id)
+                    .distance(d => d.type === 'contains' ? 50 : 100))
+                .force('charge', d3.forceManyBody()
+                    .strength(d => d.type === 'file' ? -500 : -200))
+                .force('center', d3.forceCenter(width / 2, height / 2))
+                .force('collision', d3.forceCollide()
+                    .radius(d => d.type === 'file' ? 60 : 30));
+            
+            // Create containers
+            const containers = g.append('g')
+                .attr('class', 'containers')
+                .selectAll('.container')
+                .data(nodes.filter(d => d.type === 'file' || d.type === 'class'))
+                .enter()
+                .append('rect')
+                .attr('class', d => `container container-${d.type}`);
+            
+            // Create links
+            const link = g.append('g')
+                .attr('class', 'links')
+                .selectAll('.link')
+                .data(links)
+                .enter()
+                .append('line')
+                .attr('class', d => `link link-${d.type}`)
+                .attr('marker-end', d => d.type !== 'contains' ? 'url(#arrowhead)' : '');
+            
+            // Add arrow markers
+            svg.append('defs').selectAll('marker')
+                .data(['arrowhead'])
+                .enter()
+                .append('marker')
+                .attr('id', 'arrowhead')
+                .attr('viewBox', '-0 -5 10 10')
+                .attr('refX', 25)
+                .attr('refY', 0)
+                .attr('orient', 'auto')
+                .attr('markerWidth', 8)
+                .attr('markerHeight', 8)
+                .append('svg:path')
+                .attr('d', 'M 0,-5 L 10,0 L 0,5')
+                .attr('fill', '#999');
+            
+            // Create node groups
+            const node = g.append('g')
+                .attr('class', 'nodes')
+                .selectAll('.node')
+                .data(nodes)
+                .enter()
+                .append('g')
+                .attr('class', 'node')
+                .call(d3.drag()
+                    .on('start', dragstarted)
+                    .on('drag', dragged)
+                    .on('end', dragended));
+            
+            // Add circles
+            node.append('circle')
+                .attr('r', d => {
+                    switch(d.type) {
+                        case 'file': return 25;
+                        case 'class': case 'interface': return 18;
+                        case 'method': case 'function': return 12;
+                        case 'import': return 10;
+                        default: return 8;
+                    }
+                })
+                .attr('fill', d => colorMap[d.type] || '#999')
+                .attr('stroke', '#fff')
+                .attr('stroke-width', 2)
+                .on('click', showNodeInfo)
+                .on('mouseover', showTooltip)
+                .on('mouseout', hideTooltip);
+            
+            // Add labels
+            node.append('text')
+                .attr('class', 'node-label')
+                .attr('dx', d => {
+                    switch(d.type) {
+                        case 'file': return 30;
+                        case 'class': return 22;
+                        default: return 15;
+                    }
+                })
+                .attr('dy', 4)
+                .text(d => d.name.length > 25 ? d.name.substring(0, 22) + '...' : d.name);
+            
+            // Update positions
+            simulation.on('tick', () => {
+                // Update containers
+                containers.each(function(d) {
+                    const children = nodes.filter(n => n.parent && n.parent.id === d.id);
+                    if (children.length > 0) {
+                        const padding = d.type === 'file' ? 40 : 30;
+                        const minX = Math.min(...children.map(c => c.x), d.x) - padding;
+                        const minY = Math.min(...children.map(c => c.y), d.y) - padding;
+                        const maxX = Math.max(...children.map(c => c.x), d.x) + padding;
+                        const maxY = Math.max(...children.map(c => c.y), d.y) + padding;
+                        
+                        d3.select(this)
+                            .attr('x', minX)
+                            .attr('y', minY)
+                            .attr('width', maxX - minX)
+                            .attr('height', maxY - minY);
+                    }
+                });
+                
+                // Update links with error handling
+                link
+                    .attr('x1', d => {
+                        const source = typeof d.source === 'object' ? d.source : nodeMap.get(d.source);
+                        return source ? source.x : 0;
+                    })
+                    .attr('y1', d => {
+                        const source = typeof d.source === 'object' ? d.source : nodeMap.get(d.source);
+                        return source ? source.y : 0;
+                    })
+                    .attr('x2', d => {
+                        const target = typeof d.target === 'object' ? d.target : nodeMap.get(d.target);
+                        return target ? target.x : 0;
+                    })
+                    .attr('y2', d => {
+                        const target = typeof d.target === 'object' ? d.target : nodeMap.get(d.target);
+                        return target ? target.y : 0;
+                    });
+                
+                // Update nodes
+                node.attr('transform', d => `translate(${d.x},${d.y})`);
             });
-        });
+        }
         
-        document.getElementById("resetView").addEventListener("click", function() {
-            svg.transition().duration(750).call(
+        // Drag functions
+        function dragstarted(event, d) {
+            if (!event.active && forceEnabled) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+        
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+        
+        function dragended(event, d) {
+            if (!event.active && forceEnabled) simulation.alphaTarget(0);
+            if (!event.sourceEvent.shiftKey) {
+                d.fx = null;
+                d.fy = null;
+            }
+        }
+        
+        // Control functions
+        function zoomIn() {
+            svg.transition().duration(300).call(zoom.scaleBy, 1.3);
+        }
+        
+        function zoomOut() {
+            svg.transition().duration(300).call(zoom.scaleBy, 0.7);
+        }
+        
+        function resetZoom() {
+            svg.transition().duration(300).call(zoom.transform, d3.zoomIdentity);
+        }
+        
+        function centerGraph() {
+            const bounds = g.node().getBBox();
+            const fullWidth = window.innerWidth;
+            const fullHeight = window.innerHeight;
+            const width = bounds.width;
+            const height = bounds.height;
+            const midX = bounds.x + width / 2;
+            const midY = bounds.y + height / 2;
+            
+            const scale = 0.8 / Math.max(width / fullWidth, height / fullHeight);
+            const translate = [fullWidth / 2 - scale * midX, fullHeight / 2 - scale * midY];
+            
+            svg.transition().duration(500).call(
                 zoom.transform,
-                d3.zoomIdentity.translate(0, 0).scale(1)
+                d3.zoomIdentity.translate(translate[0], translate[1]).scale(scale)
             );
-        });
+        }
         
-        document.getElementById("toggleLabels").addEventListener("click", function() {
-            showLabels = !showLabels;
-            label.style("display", showLabels ? "block" : "none");
-        });
-        
-        document.getElementById("searchInput").addEventListener("input", function() {
-            const searchTerm = this.value.toLowerCase();
-            
-            if (searchTerm) {
-                node.classed("dimmed", d => !d.name.toLowerCase().includes(searchTerm));
-                label.classed("dimmed", d => !d.name.toLowerCase().includes(searchTerm));
+        function toggleForce() {
+            forceEnabled = !forceEnabled;
+            if (forceEnabled) {
+                simulation.restart();
             } else {
-                node.classed("dimmed", false);
-                label.classed("dimmed", false);
+                simulation.stop();
+            }
+        }
+        
+        function showNodeInfo(event, d) {
+            let info = `
+                <strong>Name:</strong> ${d.name}<br>
+                <strong>Type:</strong> ${d.type}<br>
+                <strong>File:</strong> ${d.file || 'N/A'}<br>
+                <strong>Line:</strong> ${d.line || 'N/A'}<br>
+                ${d.parent ? `<strong>Parent:</strong> ${d.parent.name}` : ''}
+            `;
+            
+            // Count different types of connections
+            let callsOut = 0, callsIn = 0;
+            let createsOut = 0, createsIn = 0;
+            let inheritsFrom = 0, inheritedBy = 0;
+            
+            links.forEach(link => {
+                const source = typeof link.source === 'object' ? link.source.id : link.source;
+                const target = typeof link.target === 'object' ? link.target.id : link.target;
+                
+                if (source === d.id) {
+                    if (link.type === 'calls') callsOut++;
+                    if (link.type === 'instantiates') createsOut++;
+                    if (link.type === 'inherits') inheritsFrom++;
+                }
+                if (target === d.id) {
+                    if (link.type === 'calls') callsIn++;
+                    if (link.type === 'instantiates') createsIn++;
+                    if (link.type === 'inherits') inheritedBy++;
+                }
+            });
+            
+            // Add connection summary
+            info += '<br><br><strong>Connections:</strong><br>';
+            if (callsOut > 0) info += `• Calls ${callsOut} function(s)<br>`;
+            if (callsIn > 0) info += `• Called by ${callsIn} function(s)<br>`;
+            if (createsOut > 0) info += `• Creates/uses ${createsOut} class(es)<br>`;
+            if (createsIn > 0) info += `• Used by ${createsIn} function(s)<br>`;
+            if (inheritsFrom > 0) info += `• Inherits from ${inheritsFrom} class(es)<br>`;
+            if (inheritedBy > 0) info += `• Inherited by ${inheritedBy} class(es)<br>`;
+            
+            // Add external dependencies info if available
+            if (graphData.external_dependencies) {
+                const nodeExtDeps = graphData.external_dependencies.filter(dep => dep.source === d.id);
+                if (nodeExtDeps.length > 0) {
+                    info += `<br><strong>External Dependencies:</strong><br>`;
+                    nodeExtDeps.forEach(dep => {
+                        info += `• ${dep.target} (${dep.type})<br>`;
+                    });
+                }
+            }
+            
+            document.getElementById('nodeInfo').innerHTML = info;
+            
+            // Highlight connected nodes and show cross-file connections
+            const connectedNodeIds = new Set([d.id]);
+            const crossFileConnections = new Set();
+            
+            links.forEach(link => {
+                const source = typeof link.source === 'object' ? link.source.id : link.source;
+                const target = typeof link.target === 'object' ? link.target.id : link.target;
+                
+                if (source === d.id) {
+                    connectedNodeIds.add(target);
+                    // Check if it's a cross-file connection
+                    const targetNode = nodeMap.get(target);
+                    if (targetNode && targetNode.file !== d.file && link.type !== 'contains') {
+                        crossFileConnections.add(link);
+                    }
+                }
+                if (target === d.id) {
+                    connectedNodeIds.add(source);
+                    // Check if it's a cross-file connection
+                    const sourceNode = nodeMap.get(source);
+                    if (sourceNode && sourceNode.file !== d.file && link.type !== 'contains') {
+                        crossFileConnections.add(link);
+                    }
+                }
+            });
+            
+            // Update node opacity
+            d3.selectAll('.node').style('opacity', n => connectedNodeIds.has(n.id) ? 1 : 0.3);
+            
+            // Update link styles
+            d3.selectAll('.link')
+                .style('opacity', l => {
+                    const source = typeof l.source === 'object' ? l.source.id : l.source;
+                    const target = typeof l.target === 'object' ? l.target.id : l.target;
+                    return (source === d.id || target === d.id) ? 1 : 0.1;
+                })
+                .style('stroke-width', l => {
+                    // Make cross-file connections thicker
+                    if (crossFileConnections.has(l)) {
+                        return l.type === 'calls' || l.type === 'instantiates' ? 3 : 2;
+                    }
+                    return null; // Use default
+                });
+        }
+        
+        function showTooltip(event, d) {
+            const tooltip = d3.select('.tooltip');
+            tooltip.html(`${d.name} (${d.type})`)
+                .style('left', (event.pageX + 10) + 'px')
+                .style('top', (event.pageY - 10) + 'px')
+                .style('opacity', 1);
+        }
+        
+        function hideTooltip() {
+            d3.select('.tooltip').style('opacity', 0);
+        }
+        
+        // Search functionality
+        document.getElementById('search').addEventListener('input', function(e) {
+            const searchTerm = e.target.value.toLowerCase();
+            
+            if (searchTerm === '') {
+                d3.selectAll('.node').style('opacity', 1);
+                d3.selectAll('.link').style('opacity', 0.4);
+            } else {
+                const matchingNodes = new Set();
+                nodes.forEach(node => {
+                    if (node.name.toLowerCase().includes(searchTerm)) {
+                        matchingNodes.add(node.id);
+                    }
+                });
+                
+                d3.selectAll('.node').style('opacity', d => matchingNodes.has(d.id) ? 1 : 0.2);
+                d3.selectAll('.link').style('opacity', 0.1);
             }
         });
         
-        // UI Updates
-        function updateTypeFilter() {
-            const types = [...new Set(graphData.nodes.map(n => n.type))];
-            const select = document.getElementById("typeFilter");
-            
-            // Clear existing options except "All Types"
-            select.innerHTML = '<option value="all">All Types</option>';
-            
-            types.forEach(type => {
-                const option = document.createElement("option");
-                option.value = type;
-                option.textContent = type.charAt(0).toUpperCase() + type.slice(1);
-                select.appendChild(option);
-            });
-        }
+        // Filter by type
+        ['Files', 'Classes', 'Methods', 'Functions', 'Imports'].forEach(type => {
+            const checkbox = document.getElementById(`show${type}`);
+            if (checkbox) {
+                checkbox.addEventListener('change', function(e) {
+                    const typeKey = type.toLowerCase().slice(0, -1);
+                    d3.selectAll('.node').each(function(d) {
+                        if (d.type === typeKey) {
+                            d3.select(this).style('display', e.target.checked ? 'block' : 'none');
+                        }
+                    });
+                });
+            }
+        });
         
-        function updateLegend() {
-            const legendContent = document.getElementById("legendContent");
-            legendContent.innerHTML = ''; // Clear existing
-            const types = [...new Set(graphData.nodes.map(n => n.type))];
-            
-            types.forEach(type => {
-                const item = document.createElement("div");
-                item.className = "legend-item";
-                item.innerHTML = `
-                    <div class="legend-color" style="background: ${nodeColors[type] || '#999'}"></div>
-                    <span>${type.charAt(0).toUpperCase() + type.slice(1)}</span>
-                `;
-                legendContent.appendChild(item);
-            });
-        }
-        
+        // Update statistics
         function updateStats() {
+            if (!graphData) return;
+            
             const stats = {
-                nodes: graphData.nodes.length,
-                edges: graphData.edges.length,
-                nodeTypes: {}
+                nodes: nodes.length,
+                edges: links.length,
+                files: nodes.filter(n => n.type === 'file').length,
+                classes: nodes.filter(n => n.type === 'class').length,
+                methods: nodes.filter(n => n.type === 'method').length,
+                functions: nodes.filter(n => n.type === 'function').length,
+                crossFileConnections: 0
             };
             
-            graphData.nodes.forEach(n => {
-                stats.nodeTypes[n.type] = (stats.nodeTypes[n.type] || 0) + 1;
+            // Count cross-file connections
+            links.forEach(link => {
+                if (link.type !== 'contains') {
+                    const sourceNode = nodeMap.get(link.source.id || link.source);
+                    const targetNode = nodeMap.get(link.target.id || link.target);
+                    if (sourceNode && targetNode && sourceNode.file !== targetNode.file) {
+                        stats.crossFileConnections++;
+                    }
+                }
             });
             
             let statsHtml = `
-                <strong>Graph Statistics</strong><br>
+                <strong>Statistics:</strong><br>
                 Nodes: ${stats.nodes}<br>
                 Edges: ${stats.edges}<br>
-                <br>
+                Files: ${stats.files}<br>
+                Classes: ${stats.classes}<br>
+                Methods: ${stats.methods}<br>
+                Functions: ${stats.functions}<br>
+                Cross-file links: ${stats.crossFileConnections}
             `;
             
-            for (const [type, count] of Object.entries(stats.nodeTypes)) {
-                statsHtml += `${type}: ${count}<br>`;
+            // Add external dependencies if present
+            if (graphData.external_dependencies && graphData.external_dependencies.length > 0) {
+                const uniqueExternal = new Set(graphData.external_dependencies.map(d => d.target));
+                statsHtml += `<br>External deps: ${uniqueExternal.size}`;
             }
             
-            document.getElementById("statsContent").innerHTML = statsHtml;
+            document.getElementById('stats').innerHTML = statsHtml;
         }
         
-        // Keyboard shortcuts
-        document.addEventListener("keydown", function(e) {
-            if (e.key === "l" || e.key === "L") {
-                document.getElementById("toggleLabels").click();
-            } else if (e.key === "r" || e.key === "R") {
-                document.getElementById("resetView").click();
-            } else if (e.key === "/" || e.key === "f" || e.key === "F") {
-                e.preventDefault();
-                document.getElementById("searchInput").focus();
+        function highlightCrossFileConnections() {
+            // Find all cross-file connections
+            const crossFileLinks = [];
+            const involvedNodes = new Set();
+            
+            links.forEach(link => {
+                if (link.type !== 'contains') {
+                    const sourceNode = nodeMap.get(link.source.id || link.source);
+                    const targetNode = nodeMap.get(link.target.id || link.target);
+                    if (sourceNode && targetNode && sourceNode.file !== targetNode.file) {
+                        crossFileLinks.push(link);
+                        involvedNodes.add(sourceNode.id);
+                        involvedNodes.add(targetNode.id);
+                    }
+                }
+            });
+            
+            // Update visual styles
+            d3.selectAll('.node')
+                .style('opacity', n => involvedNodes.has(n.id) ? 1 : 0.2);
+            
+            d3.selectAll('.link')
+                .style('opacity', l => {
+                    if (l.type === 'contains') return 0.1;
+                    
+                    const sourceNode = nodeMap.get(l.source.id || l.source);
+                    const targetNode = nodeMap.get(l.target.id || l.target);
+                    if (sourceNode && targetNode && sourceNode.file !== targetNode.file) {
+                        return 1;
+                    }
+                    return 0.05;
+                })
+                .style('stroke-width', l => {
+                    const sourceNode = nodeMap.get(l.source.id || l.source);
+                    const targetNode = nodeMap.get(l.target.id || l.target);
+                    if (sourceNode && targetNode && sourceNode.file !== targetNode.file && l.type !== 'contains') {
+                        return 3;
+                    }
+                    return null;
+                });
+            
+            // Update info panel
+            document.getElementById('nodeInfo').innerHTML = `
+                <strong>Cross-File Connections:</strong><br>
+                Found ${crossFileLinks.length} connections between different files.<br><br>
+                <em>These connections show how different parts of your codebase interact with each other. 
+                Click on any node to see its specific cross-file dependencies.</em>
+            `;
+        }
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            svg.attr('width', width).attr('height', height);
+            if (simulation) {
+                simulation.force('center', d3.forceCenter(width / 2, height / 2));
+                simulation.alpha(0.3).restart();
             }
         });
+        
+        // Initialize with demo message
+        document.getElementById('nodeInfo').innerHTML = `
+            <p>Load a <code>code_graph.json</code> file to visualize your code structure.</p>
+            <p>The graph will show:</p>
+            <ul style="font-size: 13px; margin-left: -20px;">
+                <li>Files as containers</li>
+                <li>Classes within files</li>
+                <li>Methods and functions</li>
+                <li>Import relationships</li>
+                <li>Inheritance hierarchies</li>
+            </ul>
+        `;
     </script>
 </body>
 </html>
