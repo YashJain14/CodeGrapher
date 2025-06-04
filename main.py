@@ -441,17 +441,17 @@ class PythonParser:
         return nodes, edges
 
 
-class HierarchicalLayout:
-    """Calculate hierarchical layout positions for nodes"""
+class CirclePackingLayout:
+    """Calculate circle packing layout positions for nodes"""
     
     def __init__(self, nodes: Dict[str, CodeNode], edges: List[CodeEdge]):
         self.nodes = nodes
         self.edges = edges
         self.positions = {}
-        self.node_sizes = {}
+        self.radii = {}
         
-    def calculate_positions(self) -> Dict[str, Tuple[float, float]]:
-        """Calculate positions for all nodes in a hierarchical layout"""
+    def calculate_positions(self) -> Tuple[Dict[str, Tuple[float, float]], Dict[str, float]]:
+        """Calculate positions and radii for circle packing layout"""
         # Build parent-child relationships
         children = defaultdict(list)
         roots = []
@@ -467,72 +467,85 @@ class HierarchicalLayout:
         max_y = 0
         
         for root_id in sorted(roots):
-            subtree_width, subtree_height = self._calculate_subtree_size(root_id, children)
-            self._position_subtree(root_id, children, current_x + subtree_width / 2, 0)
-            current_x += subtree_width + 100
-            max_y = max(max_y, subtree_height)
+            radius = self._calculate_node_radius(root_id, children)
+            self._position_circle(root_id, children, current_x + radius, radius)
+            current_x += radius * 2 + 50  # Add spacing between root circles
+            max_y = max(max_y, radius * 2)
             
-        return self.positions
+        return self.positions, self.radii
     
-    def _calculate_subtree_size(self, node_id: str, children: Dict[str, List[str]]) -> Tuple[float, float]:
-        """Calculate the size needed for a subtree"""
+    def _calculate_node_radius(self, node_id: str, children: Dict[str, List[str]]) -> float:
+        """Calculate the radius needed for a node and its children"""
         node = self.nodes[node_id]
         
         if node_id not in children or not children[node_id]:
-            # Leaf node
-            self.node_sizes[node_id] = (150, 100)
-            return (150, 100)
+            # Leaf node - radius based on type
+            if node.type == NodeType.FILE:
+                radius = 40
+            elif node.type == NodeType.CLASS:
+                radius = 25
+            elif node.type in [NodeType.METHOD, NodeType.FUNCTION]:
+                radius = 15
+            else:
+                radius = 10
+            self.radii[node_id] = radius
+            return radius
         
-        # Calculate size based on children
-        child_sizes = []
-        total_width = 0
-        max_height = 0
-        
+        # Calculate child radii first
+        child_radii = []
         for child_id in children[node_id]:
-            child_width, child_height = self._calculate_subtree_size(child_id, children)
-            child_sizes.append((child_width, child_height))
-            total_width += child_width
-            max_height = max(max_height, child_height)
+            child_radius = self._calculate_node_radius(child_id, children)
+            child_radii.append(child_radius)
         
-        # Add spacing between children
-        total_width += 50 * (len(children[node_id]) - 1)
-        
-        # Node's own size depends on its type and children
-        if node.type == NodeType.FILE:
-            node_width = max(total_width + 100, 300)
-            node_height = max_height + 200
-        elif node.type == NodeType.CLASS:
-            node_width = max(total_width + 80, 250)
-            node_height = max_height + 150
+        # Pack children in a circle and determine required radius
+        if len(child_radii) == 1:
+            # Single child
+            required_radius = child_radii[0] + 30
         else:
-            node_width = max(total_width, 150)
-            node_height = max_height + 100
+            # Multiple children - pack them in a circle
+            # Estimate the radius needed to pack all children
+            total_child_area = sum(math.pi * r * r for r in child_radii)
+            estimated_radius = math.sqrt(total_child_area / math.pi) + max(child_radii) + 20
             
-        self.node_sizes[node_id] = (node_width, node_height)
-        return (node_width, node_height)
+            # Add minimum padding based on node type
+            if node.type == NodeType.FILE:
+                required_radius = max(estimated_radius, 80)
+            elif node.type == NodeType.CLASS:
+                required_radius = max(estimated_radius, 50)
+            else:
+                required_radius = max(estimated_radius, 30)
+        
+        self.radii[node_id] = required_radius
+        return required_radius
     
-    def _position_subtree(self, node_id: str, children: Dict[str, List[str]], x: float, y: float):
-        """Position a node and all its children"""
+    def _position_circle(self, node_id: str, children: Dict[str, List[str]], x: float, y: float):
+        """Position a node and its children using circle packing"""
         self.positions[node_id] = (x, y)
         
         if node_id not in children or not children[node_id]:
             return
         
-        # Position children
-        node_width, node_height = self.node_sizes[node_id]
-        child_y = y + 150  # Vertical spacing
+        child_list = children[node_id]
+        node_radius = self.radii[node_id]
         
-        # Calculate starting x position for children
-        total_children_width = sum(self.node_sizes[child_id][0] for child_id in children[node_id])
-        total_children_width += 50 * (len(children[node_id]) - 1)  # spacing
-        
-        current_x = x - total_children_width / 2
-        
-        for child_id in children[node_id]:
-            child_width, _ = self.node_sizes[child_id]
-            child_x = current_x + child_width / 2
-            self._position_subtree(child_id, children, child_x, child_y)
-            current_x += child_width + 50
+        if len(child_list) == 1:
+            # Single child - center it
+            child_id = child_list[0]
+            self._position_circle(child_id, children, x, y)
+        else:
+            # Multiple children - arrange in a circle
+            angle_step = 2 * math.pi / len(child_list)
+            
+            # Calculate the distance from center for child circles
+            max_child_radius = max(self.radii[child_id] for child_id in child_list)
+            distance_from_center = node_radius - max_child_radius - 10  # 10px padding
+            distance_from_center = max(distance_from_center, max_child_radius + 20)
+            
+            for i, child_id in enumerate(child_list):
+                angle = i * angle_step
+                child_x = x + distance_from_center * math.cos(angle)
+                child_y = y + distance_from_center * math.sin(angle)
+                self._position_circle(child_id, children, child_x, child_y)
 
 
 class MultiLanguageCodeGraphBuilder:
@@ -718,8 +731,8 @@ class MultiLanguageCodeGraphBuilder:
                 # You could store these separately if needed
                 pass
                 
-    def visualize_hierarchical(self, output_file: str = "code_graph.png"):
-        """Create a hierarchical visualization with nested containers"""
+    def visualize_circle_packing(self, output_file: str = "code_graph.png"):
+        """Create a circle packing visualization"""
         if len(self.nodes) == 0:
             print("No nodes to visualize!")
             return
@@ -739,145 +752,141 @@ class MultiLanguageCodeGraphBuilder:
             NodeType.PACKAGE.value: '#FFB6C1'
         }
         
-        # Calculate hierarchical layout
-        layout = HierarchicalLayout(self.nodes, self.edges)
-        positions = layout.calculate_positions()
+        # Calculate circle packing layout
+        layout = CirclePackingLayout(self.nodes, self.edges)
+        positions, radii = layout.calculate_positions()
         
-        # Find bounds
+        # Find bounds for the plot
         if positions:
             x_coords = [pos[0] for pos in positions.values()]
             y_coords = [pos[1] for pos in positions.values()]
-            min_x, max_x = min(x_coords) - 200, max(x_coords) + 200
-            min_y, max_y = min(y_coords) - 200, max(y_coords) + 200
+            all_radii = [radii[node_id] for node_id in positions.keys()]
+            
+            min_x = min(x_coords) - max(all_radii) - 50
+            max_x = max(x_coords) + max(all_radii) + 50
+            min_y = min(y_coords) - max(all_radii) - 50
+            max_y = max(y_coords) + max(all_radii) + 50
         else:
             min_x, max_x, min_y, max_y = -100, 100, -100, 100
         
-        # Draw containers for files and classes
-        containers_drawn = set()
-        
-        # Group nodes by parent
-        children_by_parent = defaultdict(list)
-        for node_id, node in self.nodes.items():
-            if node.parent_id:
-                children_by_parent[node.parent_id].append(node_id)
-        
-        # Draw containers (files and classes)
-        for node_id, node in self.nodes.items():
-            if node.type in [NodeType.FILE, NodeType.CLASS] and node_id in children_by_parent:
-                if node_id not in positions:
-                    continue
-                    
-                x, y = positions[node_id]
-                children = children_by_parent[node_id]
-                
-                if children:
-                    # Calculate bounding box for container
-                    child_positions = [positions[child_id] for child_id in children if child_id in positions]
-                    if child_positions:
-                        child_xs = [pos[0] for pos in child_positions]
-                        child_ys = [pos[1] for pos in child_positions]
-                        
-                        padding = 80 if node.type == NodeType.FILE else 60
-                        rect_x = min(child_xs) - padding
-                        rect_y = min(child_ys) - padding
-                        rect_width = max(child_xs) - min(child_xs) + 2 * padding
-                        rect_height = max(child_ys) - min(child_ys) + 2 * padding
-                        
-                        # Draw rounded rectangle container
-                        if node.type == NodeType.FILE:
-                            rect = patches.FancyBboxPatch(
-                                (rect_x, rect_y), rect_width, rect_height,
-                                boxstyle="round,pad=10",
-                                facecolor=color_map[node.type.value] + '20',  # Transparent
-                                edgecolor=color_map[node.type.value],
-                                linewidth=2,
-                                linestyle='--'
-                            )
-                        else:  # CLASS
-                            rect = patches.FancyBboxPatch(
-                                (rect_x, rect_y), rect_width, rect_height,
-                                boxstyle="round,pad=5",
-                                facecolor=color_map[node.type.value] + '30',  # Slightly more opaque
-                                edgecolor=color_map[node.type.value],
-                                linewidth=1.5
-                            )
-                        ax.add_patch(rect)
-                        
-                        # Add container label
-                        label_y = rect_y + rect_height - 20
-                        ax.text(x, label_y, node.name, 
-                               ha='center', va='top',
-                               fontsize=12 if node.type == NodeType.FILE else 10,
-                               fontweight='bold',
-                               bbox=dict(boxstyle="round,pad=0.3", 
-                                       facecolor=color_map[node.type.value], 
-                                       alpha=0.8))
-        
-        # Draw edges (non-containment relationships)
-        for edge in self.edges:
-            if edge.type != "contains" and edge.source in positions and edge.target in positions:
-                x1, y1 = positions[edge.source]
-                x2, y2 = positions[edge.target]
-                
-                if edge.type == "inherits":
-                    style = 'dashed'
-                    color = 'red'
-                    width = 2
-                elif edge.type == "implements":
-                    style = 'dotted'
-                    color = 'blue'
-                    width = 2
-                elif edge.type == "calls":
-                    style = 'solid'
-                    color = 'green'
-                    width = 1.5
-                elif edge.type == "instantiates":
-                    style = 'solid'
-                    color = 'orange'
-                    width = 1.5
-                else:
-                    style = 'solid'
-                    color = 'gray'
-                    width = 1
-                
-                ax.plot([x1, x2], [y1, y2], 
-                       linestyle=style, color=color, linewidth=width, alpha=0.6)
-                
-                # Add arrowhead
-                ax.annotate('', xy=(x2, y2), xytext=(x1, y1),
-                           arrowprops=dict(arrowstyle='->', color=color, alpha=0.6))
-        
-        # Draw nodes
+        # Draw circles for each node
         for node_id, node in self.nodes.items():
             if node_id not in positions:
                 continue
                 
             x, y = positions[node_id]
+            radius = radii[node_id]
             
-            # Skip container nodes as we've already drawn them
-            if node.type in [NodeType.FILE, NodeType.CLASS] and node_id in children_by_parent:
-                continue
-            
-            # Draw node
-            if node.type == NodeType.METHOD:
-                marker = 'o'
-                size = 300
-            elif node.type == NodeType.FUNCTION:
-                marker = 's'
-                size = 300
-            elif node.type == NodeType.IMPORT:
-                marker = '^'
-                size = 250
+            # Determine circle style based on node type
+            if node.type == NodeType.FILE:
+                # File containers - thick border, low opacity
+                circle = patches.Circle(
+                    (x, y), radius,
+                    facecolor=color_map[node.type.value],
+                    alpha=0.2,
+                    edgecolor=color_map[node.type.value],
+                    linewidth=3,
+                    linestyle='--'
+                )
+            elif node.type == NodeType.CLASS:
+                # Class containers - medium border
+                circle = patches.Circle(
+                    (x, y), radius,
+                    facecolor=color_map[node.type.value],
+                    alpha=0.3,
+                    edgecolor=color_map[node.type.value],
+                    linewidth=2
+                )
             else:
-                marker = 'o'
-                size = 200
-                
-            ax.scatter(x, y, s=size, c=color_map.get(node.type.value, '#CCCCCC'),
-                      marker=marker, alpha=0.8, edgecolors='black', linewidth=1)
+                # Methods, functions, imports - solid circles
+                circle = patches.Circle(
+                    (x, y), radius,
+                    facecolor=color_map[node.type.value],
+                    alpha=0.8,
+                    edgecolor='white',
+                    linewidth=1
+                )
             
-            # Add label
-            ax.text(x, y-30, node.name[:20] + ('...' if len(node.name) > 20 else ''),
-                   ha='center', va='top', fontsize=8)
+            ax.add_patch(circle)
+            
+            # Add labels
+            if node.type in [NodeType.FILE, NodeType.CLASS]:
+                # Larger labels for containers
+                fontsize = 12 if node.type == NodeType.FILE else 10
+                fontweight = 'bold'
+                label_y = y + radius - 15  # Position at top of circle
+            else:
+                # Smaller labels for leaf nodes
+                fontsize = 8
+                fontweight = 'normal'
+                label_y = y
+            
+            # Truncate long names
+            display_name = node.name[:20] + ('...' if len(node.name) > 20 else '')
+            
+            ax.text(x, label_y, display_name,
+                   ha='center', va='center',
+                   fontsize=fontsize,
+                   fontweight=fontweight,
+                   bbox=dict(boxstyle="round,pad=0.3", 
+                           facecolor='white', 
+                           alpha=0.8,
+                           edgecolor='none'))
+        
+        # Draw non-containment edges
+        for edge in self.edges:
+            if edge.type != "contains" and edge.source in positions and edge.target in positions:
+                x1, y1 = positions[edge.source]
+                x2, y2 = positions[edge.target]
+                
+                # Calculate edge points on circle boundaries
+                r1 = radii[edge.source]
+                r2 = radii[edge.target]
+                
+                # Vector from source to target
+                dx = x2 - x1
+                dy = y2 - y1
+                dist = math.sqrt(dx*dx + dy*dy)
+                
+                if dist > 0:
+                    # Normalize vector
+                    dx_norm = dx / dist
+                    dy_norm = dy / dist
+                    
+                    # Calculate edge start and end points
+                    start_x = x1 + r1 * dx_norm
+                    start_y = y1 + r1 * dy_norm
+                    end_x = x2 - r2 * dx_norm
+                    end_y = y2 - r2 * dy_norm
+                    
+                    # Choose edge style based on type
+                    if edge.type == "inherits":
+                        style = 'dashed'
+                        color = 'red'
+                        width = 2
+                    elif edge.type == "implements":
+                        style = 'dotted'
+                        color = 'blue'
+                        width = 2
+                    elif edge.type == "calls":
+                        style = 'solid'
+                        color = 'green'
+                        width = 1.5
+                    elif edge.type == "instantiates":
+                        style = 'solid'
+                        color = 'orange'
+                        width = 1.5
+                    else:
+                        style = 'solid'
+                        color = 'gray'
+                        width = 1
+                    
+                    ax.plot([start_x, end_x], [start_y, end_y], 
+                           linestyle=style, color=color, linewidth=width, alpha=0.7)
+                    
+                    # Add arrowhead
+                    ax.annotate('', xy=(end_x, end_y), xytext=(start_x, start_y),
+                               arrowprops=dict(arrowstyle='->', color=color, alpha=0.7))
         
         # Add legend
         from matplotlib.lines import Line2D
@@ -902,15 +911,16 @@ class MultiLanguageCodeGraphBuilder:
         
         ax.set_xlim(min_x, max_x)
         ax.set_ylim(min_y, max_y)
-        ax.set_title(f"Code Graph: {self.root_path.name} ({self.language})", 
+        ax.set_title(f"Code Graph: {self.root_path.name} ({self.language}) - Circle Packing Layout", 
                     fontsize=20, fontweight='bold', pad=20)
+        ax.set_aspect('equal')
         ax.axis('off')
         
         plt.tight_layout()
         plt.savefig(output_file, dpi=300, bbox_inches='tight', facecolor='white')
         plt.close()
         
-        print(f"Hierarchical graph saved to {output_file}")
+        print(f"Circle packing graph saved to {output_file}")
         
     def export_to_json(self, output_file: str = "code_graph.json"):
         """Export graph to JSON format with hierarchical structure"""
@@ -989,398 +999,6 @@ class MultiLanguageCodeGraphBuilder:
         print(f"Graph exported to {output_file}")
         if external_dependencies:
             print(f"Found {len(external_dependencies)} external dependencies")
-        
-    def export_html_viewer(self, html_file: str = "code_graph.html", json_file: str = "code_graph.json"):
-        """Export an interactive HTML viewer"""
-        html_content = '''<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>Interactive Code Graph Viewer</title>
-    <script src="https://d3js.org/d3.v7.min.js"></script>
-    <style>
-        body {
-            margin: 0;
-            font-family: Arial, sans-serif;
-            background: #f0f0f0;
-        }
-        
-        #container {
-            width: 100vw;
-            height: 100vh;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        #controls {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            background: white;
-            padding: 10px;
-            border-radius: 5px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-            z-index: 1000;
-        }
-        
-        #info {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background: white;
-            padding: 10px;
-            border-radius: 5px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-            max-width: 300px;
-            z-index: 1000;
-        }
-        
-        .node {
-            cursor: pointer;
-        }
-        
-        .node-label {
-            font-size: 12px;
-            pointer-events: none;
-        }
-        
-        .link {
-            fill: none;
-            stroke-opacity: 0.6;
-        }
-        
-        .link-contains {
-            stroke: #999;
-            stroke-width: 1;
-        }
-        
-        .link-inherits {
-            stroke: red;
-            stroke-width: 2;
-            stroke-dasharray: 5,5;
-        }
-        
-        .link-implements {
-            stroke: blue;
-            stroke-width: 2;
-            stroke-dasharray: 2,2;
-        }
-        
-        .link-calls {
-            stroke: green;
-            stroke-width: 1.5;
-        }
-        
-        .container {
-            fill-opacity: 0.1;
-            stroke-width: 2;
-            stroke-dasharray: 5,5;
-        }
-        
-        .container-file {
-            fill: #FF6B6B;
-            stroke: #FF6B6B;
-        }
-        
-        .container-class {
-            fill: #4ECDC4;
-            stroke: #4ECDC4;
-            stroke-dasharray: none;
-        }
-        
-        button {
-            margin: 2px;
-            padding: 5px 10px;
-            border: none;
-            border-radius: 3px;
-            background: #007bff;
-            color: white;
-            cursor: pointer;
-        }
-        
-        button:hover {
-            background: #0056b3;
-        }
-        
-        #search {
-            width: 200px;
-            padding: 5px;
-            margin-bottom: 10px;
-            border: 1px solid #ddd;
-            border-radius: 3px;
-        }
-    </style>
-</head>
-<body>
-    <div id="container">
-        <svg id="graph"></svg>
-        <div id="controls">
-            <input type="text" id="search" placeholder="Search nodes...">
-            <div>
-                <button onclick="zoomIn()">Zoom In</button>
-                <button onclick="zoomOut()">Zoom Out</button>
-                <button onclick="resetZoom()">Reset</button>
-            </div>
-            <div>
-                <label><input type="checkbox" id="showFiles" checked> Files</label>
-                <label><input type="checkbox" id="showClasses" checked> Classes</label>
-                <label><input type="checkbox" id="showMethods" checked> Methods</label>
-                <label><input type="checkbox" id="showImports" checked> Imports</label>
-            </div>
-        </div>
-        <div id="info">
-            <h3>Node Info</h3>
-            <div id="nodeInfo">Click on a node to see details</div>
-        </div>
-    </div>
-    
-    <script>
-        // Load and process data
-        let graphData = null;
-        let simulation = null;
-        let svg = null;
-        let g = null;
-        let zoom = null;
-        
-        // Color mapping
-        const colorMap = {
-            'file': '#FF6B6B',
-            'class': '#4ECDC4',
-            'interface': '#00CED1',
-            'method': '#45B7D1',
-            'function': '#96CEB4',
-            'variable': '#FECA57',
-            'import': '#DDA0DD',
-            'module': '#98D8C8',
-            'package': '#FFB6C1'
-        };
-        
-        // Load JSON data
-        fetch('CODE_GRAPH_JSON_FILE')
-            .then(response => response.json())
-            .then(data => {
-                graphData = data;
-                initializeGraph();
-            })
-            .catch(error => console.error('Error loading graph data:', error));
-        
-        function initializeGraph() {
-            const width = window.innerWidth;
-            const height = window.innerHeight;
-            
-            // Create SVG
-            svg = d3.select('#graph')
-                .attr('width', width)
-                .attr('height', height);
-            
-            // Create zoom behavior
-            zoom = d3.zoom()
-                .scaleExtent([0.1, 10])
-                .on('zoom', (event) => {
-                    g.attr('transform', event.transform);
-                });
-            
-            svg.call(zoom);
-            
-            g = svg.append('g');
-            
-            // Process hierarchical data into force-directed layout
-            const nodes = [];
-            const links = [];
-            const nodeMap = new Map();
-            
-            // Flatten hierarchical structure
-            function processNode(node, parent = null) {
-                const d3Node = {
-                    id: node.id,
-                    name: node.name,
-                    type: node.type,
-                    file: node.file,
-                    line: node.line,
-                    parent: parent,
-                    children: []
-                };
-                
-                nodes.push(d3Node);
-                nodeMap.set(node.id, d3Node);
-                
-                if (parent) {
-                    links.push({
-                        source: parent.id,
-                        target: node.id,
-                        type: 'contains'
-                    });
-                }
-                
-                if (node.children) {
-                    node.children.forEach(child => processNode(child, d3Node));
-                }
-            }
-            
-            graphData.hierarchical.forEach(root => processNode(root));
-            
-            // Add non-containment edges
-            graphData.edges.forEach(edge => {
-                if (edge.type !== 'contains') {
-                    links.push(edge);
-                }
-            });
-            
-            // Create force simulation
-            simulation = d3.forceSimulation(nodes)
-                .force('link', d3.forceLink(links).id(d => d.id).distance(100))
-                .force('charge', d3.forceManyBody().strength(-300))
-                .force('center', d3.forceCenter(width / 2, height / 2))
-                .force('collision', d3.forceCollide().radius(50));
-            
-            // Create containers for files and classes
-            const containers = g.selectAll('.container')
-                .data(nodes.filter(d => d.type === 'file' || d.type === 'class'))
-                .enter()
-                .append('rect')
-                .attr('class', d => `container container-${d.type}`)
-                .attr('rx', 10)
-                .attr('ry', 10);
-            
-            // Create links
-            const link = g.selectAll('.link')
-                .data(links)
-                .enter()
-                .append('line')
-                .attr('class', d => `link link-${d.type}`);
-            
-            // Create nodes
-            const node = g.selectAll('.node')
-                .data(nodes)
-                .enter()
-                .append('g')
-                .attr('class', 'node')
-                .call(d3.drag()
-                    .on('start', dragstarted)
-                    .on('drag', dragged)
-                    .on('end', dragended));
-            
-            // Add circles for nodes
-            node.append('circle')
-                .attr('r', d => {
-                    if (d.type === 'file') return 20;
-                    if (d.type === 'class') return 15;
-                    if (d.type === 'method' || d.type === 'function') return 10;
-                    return 8;
-                })
-                .attr('fill', d => colorMap[d.type] || '#999')
-                .on('click', showNodeInfo);
-            
-            // Add labels
-            node.append('text')
-                .attr('class', 'node-label')
-                .attr('dx', 12)
-                .attr('dy', 4)
-                .text(d => d.name.length > 20 ? d.name.substring(0, 17) + '...' : d.name);
-            
-            // Update positions on tick
-            simulation.on('tick', () => {
-                // Update containers
-                containers.each(function(d) {
-                    const children = nodes.filter(n => n.parent && n.parent.id === d.id);
-                    if (children.length > 0) {
-                        const minX = Math.min(...children.map(c => c.x)) - 30;
-                        const minY = Math.min(...children.map(c => c.y)) - 30;
-                        const maxX = Math.max(...children.map(c => c.x)) + 30;
-                        const maxY = Math.max(...children.map(c => c.y)) + 30;
-                        
-                        d3.select(this)
-                            .attr('x', minX)
-                            .attr('y', minY)
-                            .attr('width', maxX - minX)
-                            .attr('height', maxY - minY);
-                    }
-                });
-                
-                // Update links
-                link
-                    .attr('x1', d => nodeMap.get(d.source.id || d.source).x)
-                    .attr('y1', d => nodeMap.get(d.source.id || d.source).y)
-                    .attr('x2', d => nodeMap.get(d.target.id || d.target).x)
-                    .attr('y2', d => nodeMap.get(d.target.id || d.target).y);
-                
-                // Update nodes
-                node.attr('transform', d => `translate(${d.x},${d.y})`);
-            });
-        }
-        
-        // Drag functions
-        function dragstarted(event, d) {
-            if (!event.active) simulation.alphaTarget(0.3).restart();
-            d.fx = d.x;
-            d.fy = d.y;
-        }
-        
-        function dragged(event, d) {
-            d.fx = event.x;
-            d.fy = event.y;
-        }
-        
-        function dragended(event, d) {
-            if (!event.active) simulation.alphaTarget(0);
-            d.fx = null;
-            d.fy = null;
-        }
-        
-        // Control functions
-        function zoomIn() {
-            svg.transition().call(zoom.scaleBy, 1.3);
-        }
-        
-        function zoomOut() {
-            svg.transition().call(zoom.scaleBy, 0.7);
-        }
-        
-        function resetZoom() {
-            svg.transition().call(zoom.transform, d3.zoomIdentity);
-        }
-        
-        function showNodeInfo(event, d) {
-            const info = `
-                <strong>Name:</strong> ${d.name}<br>
-                <strong>Type:</strong> ${d.type}<br>
-                <strong>File:</strong> ${d.file}<br>
-                <strong>Line:</strong> ${d.line}
-            `;
-            document.getElementById('nodeInfo').innerHTML = info;
-        }
-        
-        // Search functionality
-        document.getElementById('search').addEventListener('input', function(e) {
-            const searchTerm = e.target.value.toLowerCase();
-            
-            d3.selectAll('.node').style('opacity', d => {
-                if (searchTerm === '') return 1;
-                return d.name.toLowerCase().includes(searchTerm) ? 1 : 0.2;
-            });
-        });
-        
-        // Filter by type
-        ['Files', 'Classes', 'Methods', 'Imports'].forEach(type => {
-            document.getElementById(`show${type}`).addEventListener('change', function(e) {
-                const typeKey = type.toLowerCase().slice(0, -1); // Remove 's'
-                d3.selectAll('.node').style('display', d => {
-                    if (!e.target.checked && d.type === typeKey) return 'none';
-                    return 'block';
-                });
-            });
-        });
-    </script>
-</body>
-</html>'''
-        
-        # Replace placeholder with actual JSON file path
-        html_content = html_content.replace('CODE_GRAPH_JSON_FILE', json_file)
-        
-        with open(html_file, 'w') as f:
-            f.write(html_content)
-            
-        print(f"Interactive HTML viewer saved to {html_file}")
             
     def get_statistics(self) -> Dict:
         """Get graph statistics"""
@@ -1439,7 +1057,6 @@ if __name__ == "__main__":
     parser.add_argument('-l', '--language', help='Force specific language (python, java, javascript, etc.)')
     parser.add_argument('-o', '--output', default='code_graph.png', help='Output image filename (default: code_graph.png)')
     parser.add_argument('-j', '--json', default='code_graph.json', help='Output JSON filename (default: code_graph.json)')
-    parser.add_argument('-w', '--web', default='code_graph.html', help='Output HTML filename (default: code_graph.html)')
     parser.add_argument('--list-languages', action='store_true', help='List supported languages and exit')
     
     args = parser.parse_args()
@@ -1460,14 +1077,11 @@ if __name__ == "__main__":
     print("\nAnalyzing code structure...")
     builder.build_graph()
     
-    print("\nGenerating hierarchical visualization...")
-    builder.visualize_hierarchical(args.output)
+    print("\nGenerating circle packing visualization...")
+    builder.visualize_circle_packing(args.output)
     
     print(f"\nExporting to {args.json}...")
     builder.export_to_json(args.json)
-    
-    print(f"\nGenerating interactive HTML viewer...")
-    builder.export_html_viewer(args.web, args.json)
     
     # Print statistics
     stats = builder.get_statistics()
@@ -1483,7 +1097,5 @@ if __name__ == "__main__":
         print(f"  {node_type}: {count}")
     
     print(f"\nDone! Generated:")
-    print(f"  - Hierarchical visualization: {args.output}")
+    print(f"  - Circle packing visualization: {args.output}")
     print(f"  - JSON data: {args.json}")
-    print(f"  - Interactive HTML viewer: {args.web}")
-    print("\nOpen the HTML file in a web browser for an interactive experience!")

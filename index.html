@@ -2,13 +2,13 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Interactive Code Graph Viewer</title>
+    <title>Physics-Based Circle Packing Code Graph</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
         body {
             margin: 0;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #1a1a1a;
+            background: radial-gradient(circle at center, #1a1a2e 0%, #16213e 50%, #0f1419 100%);
             color: #fff;
             overflow: hidden;
         }
@@ -23,27 +23,42 @@
             position: absolute;
             top: 20px;
             left: 20px;
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(20px);
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
             z-index: 1000;
             border: 1px solid rgba(255, 255, 255, 0.1);
+            max-width: 380px;
+            transition: all 0.3s ease;
+        }
+        
+        #controls.hidden {
+            transform: translateX(-100%);
+            opacity: 0;
+            pointer-events: none;
         }
         
         #info {
             position: absolute;
             top: 20px;
             right: 20px;
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-            max-width: 350px;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(20px);
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            max-width: 420px;
             z-index: 1000;
             border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+        
+        #info.hidden {
+            transform: translateX(100%);
+            opacity: 0;
+            pointer-events: none;
         }
         
         #fileInput {
@@ -54,148 +69,202 @@
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
+            padding: 14px 28px;
+            border-radius: 10px;
             cursor: pointer;
-            margin-bottom: 15px;
+            margin-bottom: 20px;
             font-size: 14px;
-            font-weight: 500;
+            font-weight: 600;
             width: 100%;
-            transition: transform 0.2s;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
         }
         
         .load-button:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 25px rgba(102, 126, 234, 0.4);
         }
         
         h3 {
             margin-top: 0;
             color: #fff;
             font-weight: 600;
+            font-size: 18px;
         }
         
-        .node {
+        .circle-node {
             cursor: pointer;
-            transition: all 0.3s ease;
+            transition: filter 0.2s ease;
         }
         
-        .node:hover circle {
-            filter: brightness(1.2);
+        .circle-node:hover {
+            filter: brightness(1.2) drop-shadow(0 0 10px rgba(255,255,255,0.3));
+        }
+        
+        .circle-file {
+            fill-opacity: 0.12;
             stroke-width: 3;
+            stroke-dasharray: 10,5;
+            filter: drop-shadow(0 0 8px rgba(255,107,107,0.3));
+        }
+        
+        .circle-class {
+            fill-opacity: 0.3;
+            stroke-width: 2.5;
+            filter: drop-shadow(0 0 6px rgba(78,205,196,0.3));
+        }
+        
+        .circle-interface {
+            fill-opacity: 0.3;
+            stroke-width: 2.5;
+            stroke-dasharray: 6,3;
+            filter: drop-shadow(0 0 6px rgba(0,206,209,0.3));
+        }
+        
+        .circle-method, .circle-function {
+            fill-opacity: 0.85;
+            stroke-width: 2;
+            stroke: rgba(255,255,255,0.8);
+            filter: drop-shadow(0 0 4px rgba(255,255,255,0.2));
+        }
+        
+        .circle-import {
+            fill-opacity: 0.75;
+            stroke-width: 1.5;
+            stroke: rgba(255,255,255,0.6);
+            filter: drop-shadow(0 0 3px rgba(221,160,221,0.3));
         }
         
         .node-label {
             font-size: 11px;
             pointer-events: none;
             fill: #fff;
-            text-shadow: 0 0 3px rgba(0,0,0,0.8);
+            text-shadow: 0 0 6px rgba(0,0,0,0.8), 0 0 3px rgba(0,0,0,1);
+            font-weight: 500;
+            dominant-baseline: middle;
+            text-anchor: middle;
         }
         
-        .link {
+        .container-label {
+            font-size: 13px;
+            pointer-events: none;
+            fill: #fff;
+            text-shadow: 0 0 8px rgba(0,0,0,0.9), 0 0 4px rgba(0,0,0,1);
+            font-weight: 600;
+            dominant-baseline: middle;
+            text-anchor: middle;
+        }
+        
+        .connection-line {
             fill: none;
-            stroke-opacity: 0.4;
-            transition: stroke-opacity 0.3s;
+            stroke-opacity: 0.5;
+            transition: all 0.3s ease;
         }
         
-        .link:hover {
-            stroke-opacity: 0.8;
+        .connection-line:hover {
+            stroke-opacity: 0.9;
+            stroke-width: 3 !important;
+            filter: drop-shadow(0 0 5px currentColor);
         }
         
-        .link-contains {
-            stroke: #666;
-            stroke-width: 1;
-        }
-        
-        .link-inherits {
-            stroke: #ff6b6b;
-            stroke-width: 2;
-            stroke-dasharray: 5,5;
-        }
-        
-        .link-implements {
-            stroke: #4ecdc4;
-            stroke-width: 2;
-            stroke-dasharray: 2,2;
-        }
-        
-        .link-calls {
+        .connection-calls {
             stroke: #45b7d1;
-            stroke-width: 1.5;
-        }
-        
-        .container {
-            fill-opacity: 0.05;
             stroke-width: 2;
-            rx: 15;
-            ry: 15;
-            transition: all 0.3s;
         }
         
-        .container:hover {
-            fill-opacity: 0.1;
-        }
-        
-        .container-file {
-            fill: #ff6b6b;
+        .connection-inherits {
             stroke: #ff6b6b;
-            stroke-dasharray: 5,5;
+            stroke-width: 2.5;
+            stroke-dasharray: 8,4;
         }
         
-        .container-class {
-            fill: #4ecdc4;
+        .connection-implements {
             stroke: #4ecdc4;
+            stroke-width: 2.5;
+            stroke-dasharray: 4,4;
+        }
+        
+        .connection-instantiates {
+            stroke: #ffa500;
+            stroke-width: 2;
         }
         
         button {
-            margin: 3px;
-            padding: 8px 15px;
+            margin: 4px 2px;
+            padding: 10px 16px;
             border: none;
-            border-radius: 5px;
+            border-radius: 8px;
             background: rgba(255, 255, 255, 0.1);
             color: white;
             cursor: pointer;
             font-size: 13px;
-            transition: all 0.2s;
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            font-weight: 500;
+            transition: all 0.2s ease;
+            border: 1px solid rgba(255, 255, 255, 0.15);
         }
         
         button:hover {
             background: rgba(255, 255, 255, 0.2);
             transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        button.active {
+            background: rgba(102, 126, 234, 0.3);
+            border-color: rgba(102, 126, 234, 0.5);
         }
         
         #search {
             width: 100%;
-            padding: 8px 12px;
-            margin-bottom: 15px;
+            padding: 12px 16px;
+            margin-bottom: 20px;
             border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 5px;
-            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.08);
             color: white;
             font-size: 14px;
+            font-weight: 500;
         }
         
         #search::placeholder {
-            color: rgba(255, 255, 255, 0.5);
+            color: rgba(255, 255, 255, 0.6);
+        }
+        
+        #search:focus {
+            outline: none;
+            border-color: rgba(255, 255, 255, 0.4);
+            box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1);
         }
         
         label {
-            display: block;
-            margin: 5px 0;
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
             cursor: pointer;
             font-size: 13px;
+            font-weight: 500;
         }
         
         input[type="checkbox"] {
-            margin-right: 8px;
+            margin-right: 10px;
             cursor: pointer;
+            transform: scale(1.1);
         }
         
         .button-group {
             display: flex;
-            gap: 5px;
-            margin-bottom: 15px;
+            gap: 8px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .button-group button {
+            flex: 1;
+            min-width: 85px;
         }
         
         #nodeInfo {
@@ -209,52 +278,151 @@
         
         .tooltip {
             position: absolute;
-            padding: 10px;
-            background: rgba(0, 0, 0, 0.9);
-            border-radius: 5px;
+            padding: 12px 16px;
+            background: rgba(0, 0, 0, 0.92);
+            border-radius: 10px;
             font-size: 12px;
             pointer-events: none;
             opacity: 0;
-            transition: opacity 0.3s;
+            transition: opacity 0.3s ease;
             z-index: 2000;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
         }
         
         #stats {
-            margin-top: 15px;
-            padding-top: 15px;
+            margin-top: 20px;
+            padding-top: 20px;
             border-top: 1px solid rgba(255, 255, 255, 0.1);
             font-size: 13px;
+            line-height: 1.6;
         }
         
         .legend {
             position: absolute;
             bottom: 20px;
             left: 20px;
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            padding: 15px;
-            border-radius: 10px;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(20px);
+            padding: 20px;
+            border-radius: 15px;
             border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            transition: all 0.3s ease;
+        }
+        
+        .legend.hidden {
+            transform: translateX(-100%);
+            opacity: 0;
+            pointer-events: none;
+        }
+        
+        #uiToggle {
+            position: absolute;
+            top: 50%;
+            left: 10px;
+            transform: translateY(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 15px 8px;
+            border-radius: 0 10px 10px 0;
+            cursor: pointer;
+            font-size: 16px;
+            z-index: 1001;
+            transition: all 0.3s ease;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+        }
+        
+        #uiToggle:hover {
+            background: rgba(0, 0, 0, 0.9);
+            padding-left: 12px;
+        }
+        
+        #uiToggle.hidden {
+            left: -2px;
+            border-radius: 0 8px 8px 0;
+            padding: 10px 6px;
+        }
+        
+        .legend h4 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            font-size: 16px;
+            font-weight: 600;
+        }
+        
+        .legend-section {
+            margin-bottom: 15px;
+        }
+        
+        .legend-section:last-child {
+            margin-bottom: 0;
         }
         
         .legend-item {
             display: flex;
             align-items: center;
+            margin: 8px 0;
+            font-size: 12px;
+        }
+        
+        .legend-color {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            margin-right: 12px;
+            display: inline-block;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+        
+        .legend-line {
+            margin-right: 12px;
+        }
+        
+        .highlighted {
+            stroke: #fff !important;
+            stroke-width: 4 !important;
+            filter: brightness(1.4) drop-shadow(0 0 15px rgba(255,255,255,0.6)) !important;
+        }
+        
+        .dimmed {
+            opacity: 0.25 !important;
+            filter: grayscale(0.3) !important;
+        }
+        
+        .section-title {
+            font-weight: 600;
+            color: #4ecdc4;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        
+        .physics-controls {
+            margin-bottom: 15px;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .physics-controls label {
             margin: 5px 0;
             font-size: 12px;
         }
         
-        .legend-item svg {
-            display: inline-block;
-            vertical-align: middle;
+        .physics-controls input[type="range"] {
+            width: 100%;
+            margin: 5px 0;
         }
         
-        .legend-color {
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            margin-right: 10px;
-            display: inline-block;
+        .circular-boundary {
+            fill: none;
+            stroke: rgba(255, 255, 255, 0.1);
+            stroke-width: 2;
+            stroke-dasharray: 10,10;
+            opacity: 0.3;
         }
     </style>
 </head>
@@ -262,85 +430,127 @@
     <div id="container">
         <svg id="graph"></svg>
         
+        <button id="uiToggle" onclick="toggleUI()">🎛️</button>
+        
         <div id="controls">
             <input type="file" id="fileInput" accept=".json">
             <button class="load-button" onclick="document.getElementById('fileInput').click()">
-                Load code_graph.json
+                📁 Load code_graph.json
             </button>
             
-            <input type="text" id="search" placeholder="Search nodes...">
+            <input type="text" id="search" placeholder="🔍 Search nodes...">
             
             <div class="button-group">
-                <button onclick="zoomIn()">Zoom In</button>
-                <button onclick="zoomOut()">Zoom Out</button>
-                <button onclick="resetZoom()">Reset</button>
+                <button onclick="zoomIn()">🔍 Zoom In</button>
+                <button onclick="zoomOut()">🔍 Zoom Out</button>
+                <button onclick="resetZoom()">🏠 Reset</button>
             </div>
             
             <div class="button-group">
-                <button onclick="toggleForce()">Toggle Physics</button>
-                <button onclick="centerGraph()">Center</button>
-                <button onclick="highlightCrossFileConnections()">Show Cross-File Links</button>
+                <button onclick="centerGraph()">📍 Center</button>
+                <button id="physicsBtn" onclick="togglePhysics()" class="active">⚡ Physics</button>
+                <button onclick="resetPositions()">🔄 Scatter</button>
             </div>
             
-            <div style="margin-top: 15px;">
-                <label><input type="checkbox" id="showFiles" checked> Files</label>
-                <label><input type="checkbox" id="showClasses" checked> Classes</label>
-                <label><input type="checkbox" id="showMethods" checked> Methods</label>
-                <label><input type="checkbox" id="showFunctions" checked> Functions</label>
-                <label><input type="checkbox" id="showImports" checked> Imports</label>
+            <div class="button-group">
+                <button onclick="toggleConnections()">🔗 Links</button>
+                <button onclick="highlightCrossFileConnections()">🌐 Cross-File</button>
             </div>
+            
+            <div class="physics-controls">
+                <div class="section-title">Physics Settings</div>
+                <label>
+                    Gravity: <span id="gravityValue">0.005</span>
+                    <input type="range" id="gravitySlider" min="0" max="0.05" step="0.002" value="0.005">
+                </label>
+                <label>
+                    Repulsion: <span id="chargeValue">-300</span>
+                    <input type="range" id="chargeSlider" min="-800" max="-50" step="25" value="-300">
+                </label>
+                <label>
+                    Link Strength: <span id="linkValue">0.05</span>
+                    <input type="range" id="linkSlider" min="0.01" max="0.3" step="0.01" value="0.05">
+                </label>
+                <label>
+                    Collision Padding: <span id="collisionValue">40</span>
+                    <input type="range" id="collisionSlider" min="10" max="100" step="5" value="40">
+                </label>
+                <label>
+                    <input type="checkbox" id="enablePhysics" checked> Enable Physics
+                </label>
+                <label>
+                    <input type="checkbox" id="highPerformance" checked> High Performance Mode
+                </label>
+            </div>
+            
+            <div class="section-title">Node Types</div>
+            <label><input type="checkbox" id="showFiles" checked> 📄 Files</label>
+            <label><input type="checkbox" id="showClasses" checked> 🏗️ Classes</label>
+            <label><input type="checkbox" id="showMethods" checked> ⚙️ Methods</label>
+            <label><input type="checkbox" id="showFunctions" checked> 🔧 Functions</label>
+            <label><input type="checkbox" id="showImports" checked> 📦 Imports</label>
             
             <div id="stats"></div>
         </div>
         
         <div id="info">
             <h3>Node Information</h3>
-            <div id="nodeInfo">Click on a node to see details</div>
+            <div id="nodeInfo">Load a JSON file to start exploring your code structure with physics-based visualization.</div>
         </div>
         
         <div class="legend">
-            <h4 style="margin-top: 0;">Legend</h4>
-            <div style="margin-bottom: 10px;">
-                <strong>Nodes:</strong>
+            <h4>Legend</h4>
+            
+            <div class="legend-section">
+                <div class="section-title">Node Types:</div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #FF6B6B; opacity: 0.3; border: 2px dashed #FF6B6B;"></div>
+                    <span>File Container</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #4ECDC4; opacity: 0.5;"></div>
+                    <span>Class Container</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #45B7D1;"></div>
+                    <span>Method</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #96CEB4;"></div>
+                    <span>Function</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #DDA0DD;"></div>
+                    <span>Import</span>
+                </div>
             </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: #FF6B6B;"></div>
-                <span>File</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: #4ECDC4;"></div>
-                <span>Class</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: #45B7D1;"></div>
-                <span>Method</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: #96CEB4;"></div>
-                <span>Function</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: #DDA0DD;"></div>
-                <span>Import</span>
-            </div>
-            <div style="margin-top: 10px; margin-bottom: 10px;">
-                <strong>Connections:</strong>
-            </div>
-            <div class="legend-item">
-                <svg width="30" height="2" style="margin-right: 10px;"><line x1="0" y1="1" x2="30" y2="1" stroke="#45b7d1" stroke-width="2"/></svg>
-                <span>Calls</span>
-            </div>
-            <div class="legend-item">
-                <svg width="30" height="2" style="margin-right: 10px;"><line x1="0" y1="1" x2="30" y2="1" stroke="#ffa500" stroke-width="2"/></svg>
-                <span>Creates/Uses</span>
-            </div>
-            <div class="legend-item">
-                <svg width="30" height="2" style="margin-right: 10px;"><line x1="0" y1="1" x2="30" y2="1" stroke="#ff6b6b" stroke-width="2" stroke-dasharray="5,5"/></svg>
-                <span>Inherits</span>
-            </div>
-            <div class="legend-item">
-                <svg width="30" height="2" style="margin-right: 10px;"><line x1="0" y1="1" x2="30" y2="1" stroke="#4ecdc4" stroke-width="2" stroke-dasharray="2,2"/></svg>
-                <span>Implements</span>
+            
+            <div class="legend-section">
+                <div class="section-title">Relationships:</div>
+                <div class="legend-item">
+                    <svg class="legend-line" width="30" height="3">
+                        <line x1="0" y1="1.5" x2="30" y2="1.5" stroke="#45b7d1" stroke-width="2"/>
+                    </svg>
+                    <span>Calls</span>
+                </div>
+                <div class="legend-item">
+                    <svg class="legend-line" width="30" height="3">
+                        <line x1="0" y1="1.5" x2="30" y2="1.5" stroke="#ffa500" stroke-width="2"/>
+                    </svg>
+                    <span>Creates/Uses</span>
+                </div>
+                <div class="legend-item">
+                    <svg class="legend-line" width="30" height="3">
+                        <line x1="0" y1="1.5" x2="30" y2="1.5" stroke="#ff6b6b" stroke-width="2" stroke-dasharray="8,4"/>
+                    </svg>
+                    <span>Inherits</span>
+                </div>
+                <div class="legend-item">
+                    <svg class="legend-line" width="30" height="3">
+                        <line x1="0" y1="1.5" x2="30" y2="1.5" stroke="#4ecdc4" stroke-width="2" stroke-dasharray="4,4"/>
+                    </svg>
+                    <span>Implements</span>
+                </div>
             </div>
         </div>
         
@@ -350,14 +560,31 @@
     <script>
         // Global variables
         let graphData = null;
-        let simulation = null;
         let svg = null;
         let g = null;
         let zoom = null;
-        let forceEnabled = true;
+        let simulation = null;
+        let showConnections = true;
+        let physicsEnabled = true;
+        let uiVisible = true;
         let nodes = [];
-        let links = [];
-        let nodeMap = new Map();
+        let connections = [];
+        let circleElements = null;
+        let connectionElements = null;
+        let labelElements = null;
+        let boundaryCircle = null;
+        
+        // Performance optimization variables
+        let lastTickTime = 0;
+        let tickThrottle = 16; // ~60fps max
+        let isSimulationCooled = false;
+        let frameRequestId = null;
+        
+        // Physics parameters - MUCH more spread out defaults
+        let gravityStrength = 0.005; // Much weaker gravity
+        let chargeStrength = -300; // Stronger repulsion
+        let linkStrength = 0.05; // Weaker links
+        let collisionPadding = 40; // Much more collision padding
         
         // Color mapping
         const colorMap = {
@@ -390,17 +617,196 @@
             }
         });
         
+        // Physics controls
+        document.getElementById('gravitySlider').addEventListener('input', function(e) {
+            gravityStrength = parseFloat(e.target.value);
+            document.getElementById('gravityValue').textContent = gravityStrength;
+            throttledUpdatePhysics();
+        });
+        
+        document.getElementById('chargeSlider').addEventListener('input', function(e) {
+            chargeStrength = parseInt(e.target.value);
+            document.getElementById('chargeValue').textContent = chargeStrength;
+            throttledUpdatePhysics();
+        });
+        
+        document.getElementById('linkSlider').addEventListener('input', function(e) {
+            linkStrength = parseFloat(e.target.value);
+            document.getElementById('linkValue').textContent = linkStrength;
+            throttledUpdatePhysics();
+        });
+        
+        document.getElementById('collisionSlider').addEventListener('input', function(e) {
+            collisionPadding = parseInt(e.target.value);
+            document.getElementById('collisionValue').textContent = collisionPadding;
+            throttledUpdatePhysics();
+        });
+        
+        document.getElementById('enablePhysics').addEventListener('change', function(e) {
+            physicsEnabled = e.target.checked;
+            if (physicsEnabled) {
+                simulation?.restart();
+            } else {
+                simulation?.stop();
+            }
+        });
+        
+        document.getElementById('highPerformance').addEventListener('change', function(e) {
+            tickThrottle = e.target.checked ? 33 : 16; // 30fps vs 60fps
+        });
+        
+        // Throttled physics update to prevent excessive recalculation
+        let physicsUpdateTimeout;
+        function throttledUpdatePhysics() {
+            clearTimeout(physicsUpdateTimeout);
+            physicsUpdateTimeout = setTimeout(updatePhysics, 100);
+        }
+        
+        function updatePhysics() {
+            if (simulation && physicsEnabled) {
+                const nodeCount = nodes.length;
+                
+                // Better spacing calculations
+                const isLargeGraph = nodeCount > 100;
+                const isMassiveGraph = nodeCount > 500;
+                
+                // Adaptive parameters for better spacing
+                const adaptiveCharge = isMassiveGraph ? 
+                    Math.max(chargeStrength * 3, -900) : 
+                    isLargeGraph ? 
+                    Math.max(chargeStrength * 2, -600) : 
+                    chargeStrength;
+                
+                const adaptiveCollision = Math.max(collisionPadding * 1.5, 
+                    isMassiveGraph ? 80 : isLargeGraph ? 60 : 50);
+                
+                const adaptiveLink = isLargeGraph ? linkStrength * 0.3 : linkStrength * 0.5;
+                
+                simulation
+                    .force('center', d3.forceCenter().strength(gravityStrength))
+                    .force('charge', d3.forceManyBody()
+                        .strength(adaptiveCharge)
+                        .distanceMax(isMassiveGraph ? 600 : isLargeGraph ? 400 : 300))
+                    .force('link', d3.forceLink(connections)
+                        .id(d => d.id)
+                        .strength(adaptiveLink)
+                        .distance(d => {
+                            const sourceRadius = d.source.radius || 15;
+                            const targetRadius = d.target.radius || 15;
+                            const baseDistance = sourceRadius + targetRadius;
+                            const spacingMultiplier = isMassiveGraph ? 6 : isLargeGraph ? 4.5 : 3.5;
+                            return baseDistance + (80 * spacingMultiplier);
+                        }))
+                    .force('collision', d3.forceCollide()
+                        .radius(d => d.radius + adaptiveCollision)
+                        .strength(0.9))
+                    .alphaDecay(isMassiveGraph ? 0.02 : isLargeGraph ? 0.03 : 0.028)
+                    .alpha(0.1)
+                    .restart();
+            }
+        }
+        
+        function toggleUI() {
+            uiVisible = !uiVisible;
+            const controls = document.getElementById('controls');
+            const info = document.getElementById('info');
+            const legend = document.querySelector('.legend');
+            const toggle = document.getElementById('uiToggle');
+            
+            if (uiVisible) {
+                controls.classList.remove('hidden');
+                info.classList.remove('hidden');
+                legend.classList.remove('hidden');
+                toggle.classList.remove('hidden');
+                toggle.textContent = '🎛️';
+            } else {
+                controls.classList.add('hidden');
+                info.classList.add('hidden');
+                legend.classList.add('hidden');
+                toggle.classList.add('hidden');
+                toggle.textContent = '👁️';
+            }
+            
+            // Recalculate graph size after UI toggle
+            setTimeout(() => {
+                if (simulation) {
+                    const width = window.innerWidth;
+                    const height = window.innerHeight;
+                    const centerX = width / 2;
+                    const centerY = height / 2;
+                    const boundaryRadius = Math.min(width, height) * 0.48;
+                    
+                    // Update boundary circle
+                    if (boundaryCircle) {
+                        boundaryCircle
+                            .attr('cx', centerX)
+                            .attr('cy', centerY)
+                            .attr('r', boundaryRadius);
+                    }
+                    
+                    // Update simulation forces
+                    simulation
+                        .force('center', d3.forceCenter(centerX, centerY).strength(gravityStrength))
+                        .force('boundary', boundaryForce(centerX, centerY, boundaryRadius))
+                        .alpha(0.3)
+                        .restart();
+                }
+            }, 100);
+        }
+        
         function initializeGraph() {
             // Clear existing graph
             d3.select('#graph').selectAll('*').remove();
             
             const width = window.innerWidth;
             const height = window.innerHeight;
+            const centerX = width / 2;
+            const centerY = height / 2;
+            // MUCH larger boundary radius for more space
+            const boundaryRadius = Math.min(width, height) * 0.48;
             
             // Create SVG
             svg = d3.select('#graph')
                 .attr('width', width)
                 .attr('height', height);
+            
+            // Add gradient definitions
+            const defs = svg.append('defs');
+            
+            // Create radial gradient for background glow
+            const radialGradient = defs.append('radialGradient')
+                .attr('id', 'backgroundGlow')
+                .attr('cx', '50%')
+                .attr('cy', '50%')
+                .attr('r', '50%');
+            
+            radialGradient.append('stop')
+                .attr('offset', '0%')
+                .attr('stop-color', 'rgba(102, 126, 234, 0.1)');
+            
+            radialGradient.append('stop')
+                .attr('offset', '100%')
+                .attr('stop-color', 'rgba(102, 126, 234, 0.02)');
+            
+            // Create arrow markers for different connection types
+            ['calls', 'inherits', 'implements', 'instantiates'].forEach(type => {
+                const color = type === 'calls' ? '#45b7d1' : 
+                             type === 'inherits' ? '#ff6b6b' :
+                             type === 'implements' ? '#4ecdc4' : '#ffa500';
+                
+                defs.append('marker')
+                    .attr('id', `arrowhead-${type}`)
+                    .attr('viewBox', '-0 -5 10 10')
+                    .attr('refX', 8)
+                    .attr('refY', 0)
+                    .attr('orient', 'auto')
+                    .attr('markerWidth', 8)
+                    .attr('markerHeight', 8)
+                    .append('path')
+                    .attr('d', 'M 0,-5 L 10,0 L 0,5')
+                    .attr('fill', color)
+                    .attr('opacity', 0.7);
+            });
             
             // Add zoom behavior
             zoom = d3.zoom()
@@ -411,391 +817,479 @@
             
             svg.call(zoom);
             
-            // Add background click handler to reset highlighting
+            // Add background circle with glow
+            svg.append('circle')
+                .attr('cx', centerX)
+                .attr('cy', centerY)
+                .attr('r', boundaryRadius)
+                .attr('fill', 'url(#backgroundGlow)')
+                .style('pointer-events', 'none');
+            
+            // Add background click handler
             svg.on('click', function(event) {
                 if (event.target === this || event.target.tagName === 'svg') {
-                    // Clicked on background, reset highlighting
-                    d3.selectAll('.node').style('opacity', 1);
-                    d3.selectAll('.link')
-                        .style('opacity', 0.4)
-                        .style('stroke-width', null); // Reset to default
-                    document.getElementById('nodeInfo').innerHTML = 'Click on a node to see details';
+                    resetHighlight();
                 }
             });
             
             // Create main group
             g = svg.append('g');
             
-            // Process data
-            nodes = [];
-            links = [];
-            nodeMap.clear();
+            // Add boundary circle
+            boundaryCircle = g.append('circle')
+                .attr('class', 'circular-boundary')
+                .attr('cx', centerX)
+                .attr('cy', centerY)
+                .attr('r', boundaryRadius);
             
-            // Use hierarchical data if available, otherwise use flat structure
-            if (graphData.hierarchical) {
-                function processNode(node, parent = null, depth = 0) {
-                    const d3Node = {
-                        id: node.id,
-                        name: node.name,
-                        type: node.type,
-                        file: node.file,
-                        line: node.line,
-                        parent: parent,
-                        children: [],
-                        depth: depth,
-                        x: Math.random() * width,
-                        y: Math.random() * height
-                    };
-                    
-                    nodes.push(d3Node);
-                    nodeMap.set(node.id, d3Node);
-                    
-                    if (parent) {
-                        links.push({
-                            source: parent.id,
-                            target: node.id,
-                            type: 'contains'
-                        });
-                    }
-                    
-                    if (node.children) {
-                        node.children.forEach(child => processNode(child, d3Node, depth + 1));
-                    }
+            // Process hierarchical data
+            processData(centerX, centerY, boundaryRadius);
+            
+            // Create physics simulation
+            createSimulation(centerX, centerY);
+            
+            // Render the visualization
+            render();
+            
+            // Start periodic stats updates
+            if (window.statsInterval) clearInterval(window.statsInterval);
+            window.statsInterval = setInterval(updateStats, 1000);
+        }
+        
+        function processData(centerX, centerY, boundaryRadius) {
+            nodes = [];
+            connections = [];
+            
+            if (!graphData.hierarchical) return;
+            
+            // Process hierarchical structure into flat format
+            function processHierarchy(nodeData, parent = null, level = 0) {
+                const node = {
+                    id: nodeData.id,
+                    name: nodeData.name,
+                    type: nodeData.type,
+                    file: nodeData.file,
+                    line: nodeData.line,
+                    children: nodeData.children || [],
+                    parent: parent,
+                    level: level,
+                    radius: calculateRadius(nodeData),
+                    x: 0,
+                    y: 0,
+                    fx: null,
+                    fy: null
+                };
+                
+                nodes.push(node);
+                
+                // Process children
+                if (nodeData.children && nodeData.children.length > 0) {
+                    nodeData.children.forEach(child => {
+                        processHierarchy(child, node, level + 1);
+                    });
                 }
                 
-                graphData.hierarchical.forEach(root => processNode(root));
-            } else {
-                // Fallback to flat structure
-                graphData.nodes.forEach(node => {
-                    const d3Node = {
-                        id: node.id,
-                        name: node.name,
-                        type: node.type,
-                        file: node.file,
-                        line: node.line,
-                        parent: node.parent_id ? nodeMap.get(node.parent_id) : null,
-                        x: Math.random() * width,
-                        y: Math.random() * height
-                    };
-                    nodes.push(d3Node);
-                    nodeMap.set(node.id, d3Node);
-                });
+                return node;
             }
             
-            // Add edges, filtering out invalid ones
+            // Process all root nodes
+            graphData.hierarchical.forEach(root => {
+                processHierarchy(root);
+            });
+            
+            // MUCH better initial positioning with WAY more space
+            const nodeCount = nodes.length;
+            nodes.forEach((node, index) => {
+                // Use golden ratio spiral for better distribution
+                const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+                const theta = index * goldenAngle;
+                
+                // Much larger adaptive radius based on node count
+                const maxRadius = boundaryRadius * 0.9; // Use more of the available space
+                const spiralRadius = Math.sqrt(index / nodeCount) * maxRadius;
+                
+                // Add some randomization to break up perfect patterns
+                const randomOffset = (Math.random() - 0.5) * 50;
+                const adjustedRadius = spiralRadius + randomOffset;
+                
+                node.x = centerX + Math.cos(theta) * adjustedRadius;
+                node.y = centerY + Math.sin(theta) * adjustedRadius;
+            });
+            
+            // Process connections (non-containment edges)
             if (graphData.edges) {
+                const nodeMap = new Map(nodes.map(n => [n.id, n]));
+                
                 graphData.edges.forEach(edge => {
-                    // Only add edges where both nodes exist
-                    if (nodeMap.has(edge.source) && nodeMap.has(edge.target)) {
-                        links.push(edge);
+                    if (edge.type !== 'contains' && nodeMap.has(edge.source) && nodeMap.has(edge.target)) {
+                        connections.push({
+                            source: edge.source,
+                            target: edge.target,
+                            type: edge.type
+                        });
                     }
                 });
             }
+        }
+        
+        function calculateRadius(nodeData) {
+            // Slightly larger radii for better visibility
+            switch (nodeData.type) {
+                case 'file':
+                    const childCount = (nodeData.children || []).length;
+                    return Math.max(45, 30 + childCount * 3);
+                case 'class':
+                case 'interface':
+                    const methodCount = (nodeData.children || []).length;
+                    return Math.max(30, 20 + methodCount * 2.5);
+                case 'method':
+                case 'function':
+                    return 12;
+                case 'import':
+                    return 8;
+                default:
+                    return 10;
+            }
+        }
+        
+        function createSimulation(centerX, centerY) {
+            const nodeCount = nodes.length;
+            const boundaryRadius = Math.min(window.innerWidth, window.innerHeight) * 0.48;
+            const isLargeGraph = nodeCount > 100;
+            const isMassiveGraph = nodeCount > 500;
             
-            // Display external dependencies info if present
-            if (graphData.external_dependencies && graphData.external_dependencies.length > 0) {
-                console.log(`Found ${graphData.external_dependencies.length} external dependencies`);
-                const extDeps = {};
-                graphData.external_dependencies.forEach(dep => {
-                    extDeps[dep.target] = (extDeps[dep.target] || 0) + 1;
+            console.log(`Creating simulation for ${nodeCount} nodes (${isMassiveGraph ? 'massive' : isLargeGraph ? 'large' : 'small'} graph)`);
+            
+            // Much stronger repulsion and spacing for better separation
+            const adaptiveCharge = isMassiveGraph ? 
+                Math.max(chargeStrength * 3, -900) : 
+                isLargeGraph ? 
+                Math.max(chargeStrength * 2, -600) : 
+                chargeStrength;
+            
+            const adaptiveCollision = Math.max(collisionPadding * 1.5, 
+                isMassiveGraph ? 80 : isLargeGraph ? 60 : 50);
+            
+            const adaptiveLink = isLargeGraph ? linkStrength * 0.3 : linkStrength * 0.5;
+            const adaptiveGravity = Math.max(0.002, gravityStrength / Math.sqrt(nodeCount / 5));
+            
+            simulation = d3.forceSimulation(nodes)
+                .force('link', d3.forceLink(connections)
+                    .id(d => d.id)
+                    .strength(adaptiveLink)
+                    .distance(d => {
+                        const sourceRadius = d.source.radius || 15;
+                        const targetRadius = d.target.radius || 15;
+                        const baseDistance = sourceRadius + targetRadius;
+                        // Much larger spacing multipliers
+                        const spacingMultiplier = isMassiveGraph ? 6 : isLargeGraph ? 4.5 : 3.5;
+                        return baseDistance + (80 * spacingMultiplier);
+                    }))
+                .force('charge', d3.forceManyBody()
+                    .strength(adaptiveCharge)
+                    .distanceMax(isMassiveGraph ? 600 : isLargeGraph ? 400 : 300))
+                .force('center', d3.forceCenter(centerX, centerY).strength(adaptiveGravity))
+                .force('collision', d3.forceCollide()
+                    .radius(d => d.radius + adaptiveCollision)
+                    .strength(0.9)) // Stronger collision detection
+                .force('boundary', boundaryForce(centerX, centerY, boundaryRadius))
+                .alphaDecay(isMassiveGraph ? 0.08 : isLargeGraph ? 0.06 : 0.04) // Faster decay to settle sooner
+                .alphaMin(0.001) // Higher minimum to stop sooner
+                .on('tick', throttledTick)
+                .on('end', () => {
+                    isSimulationCooled = true;
+                    console.log('Simulation settled - nodes locked in position');
+                    // Lock all nodes in position once simulation ends
+                    nodes.forEach(node => {
+                        node.fx = node.x;
+                        node.fy = node.y;
+                    });
                 });
-                console.log('External dependencies:', extDeps);
+                
+            // Auto-stop simulation faster for better stability
+            setTimeout(() => {
+                if (simulation && simulation.alpha() > 0.01) {
+                    simulation.alpha(0.001); // Force stop
+                    console.log('Force stopping simulation to prevent endless movement');
+                    // Lock all nodes in position
+                    nodes.forEach(node => {
+                        node.fx = node.x;
+                        node.fy = node.y;
+                    });
+                }
+            }, isMassiveGraph ? 6000 : isLargeGraph ? 4000 : 3000); // Shorter timeouts
+        }
+        
+        // Throttled tick function for better performance
+        function throttledTick() {
+            const now = Date.now();
+            if (now - lastTickTime >= tickThrottle) {
+                lastTickTime = now;
+                updatePositions();
+            }
+        }
+        
+        function boundaryForce(centerX, centerY, radius) {
+            return function(alpha) {
+                nodes.forEach(node => {
+                    const dx = node.x - centerX;
+                    const dy = node.y - centerY;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    // More gentle boundary with larger buffer
+                    const boundaryBuffer = node.radius + 20;
+                    if (distance > radius - boundaryBuffer) {
+                        const factor = (radius - boundaryBuffer) / distance;
+                        node.x = centerX + dx * factor;
+                        node.y = centerY + dy * factor;
+                    }
+                });
+            };
+        }
+        
+        function render() {
+            // Create connection lines first (so they appear behind circles)
+            if (showConnections) {
+                connectionElements = g.selectAll('.connection-line')
+                    .data(connections)
+                    .enter()
+                    .append('line')
+                    .attr('class', d => `connection-line connection-${d.type}`)
+                    .attr('marker-end', d => `url(#arrowhead-${d.type})`)
+                    .on('mouseover', showConnectionTooltip)
+                    .on('mouseout', hideTooltip);
             }
             
-            // Create force simulation
-            simulation = d3.forceSimulation(nodes)
-                .force('link', d3.forceLink(links)
-                    .id(d => d.id)
-                    .distance(d => d.type === 'contains' ? 50 : 100))
-                .force('charge', d3.forceManyBody()
-                    .strength(d => d.type === 'file' ? -500 : -200))
-                .force('center', d3.forceCenter(width / 2, height / 2))
-                .force('collision', d3.forceCollide()
-                    .radius(d => d.type === 'file' ? 60 : 30));
-            
-            // Create containers
-            const containers = g.append('g')
-                .attr('class', 'containers')
-                .selectAll('.container')
-                .data(nodes.filter(d => d.type === 'file' || d.type === 'class'))
-                .enter()
-                .append('rect')
-                .attr('class', d => `container container-${d.type}`);
-            
-            // Create links
-            const link = g.append('g')
-                .attr('class', 'links')
-                .selectAll('.link')
-                .data(links)
-                .enter()
-                .append('line')
-                .attr('class', d => `link link-${d.type}`)
-                .attr('marker-end', d => d.type !== 'contains' ? 'url(#arrowhead)' : '');
-            
-            // Add arrow markers
-            svg.append('defs').selectAll('marker')
-                .data(['arrowhead'])
-                .enter()
-                .append('marker')
-                .attr('id', 'arrowhead')
-                .attr('viewBox', '-0 -5 10 10')
-                .attr('refX', 25)
-                .attr('refY', 0)
-                .attr('orient', 'auto')
-                .attr('markerWidth', 8)
-                .attr('markerHeight', 8)
-                .append('svg:path')
-                .attr('d', 'M 0,-5 L 10,0 L 0,5')
-                .attr('fill', '#999');
-            
-            // Create node groups
-            const node = g.append('g')
-                .attr('class', 'nodes')
-                .selectAll('.node')
+            // Create circles
+            circleElements = g.selectAll('.circle-node')
                 .data(nodes)
                 .enter()
-                .append('g')
-                .attr('class', 'node')
-                .call(d3.drag()
-                    .on('start', dragstarted)
-                    .on('drag', dragged)
-                    .on('end', dragended));
-            
-            // Add circles
-            node.append('circle')
-                .attr('r', d => {
-                    switch(d.type) {
-                        case 'file': return 25;
-                        case 'class': case 'interface': return 18;
-                        case 'method': case 'function': return 12;
-                        case 'import': return 10;
-                        default: return 8;
-                    }
-                })
+                .append('circle')
+                .attr('class', d => `circle-node circle-${d.type}`)
+                .attr('r', d => d.radius)
                 .attr('fill', d => colorMap[d.type] || '#999')
-                .attr('stroke', '#fff')
-                .attr('stroke-width', 2)
+                .attr('stroke', d => colorMap[d.type] || '#999')
                 .on('click', showNodeInfo)
-                .on('mouseover', showTooltip)
+                .on('mouseover', showNodeTooltip)
                 .on('mouseout', hideTooltip);
+                // Removed drag behavior - nodes are not draggable
             
-            // Add labels
-            node.append('text')
-                .attr('class', 'node-label')
-                .attr('dx', d => {
-                    switch(d.type) {
-                        case 'file': return 30;
-                        case 'class': return 22;
-                        default: return 15;
-                    }
+            // Create labels
+            labelElements = g.selectAll('.node-label')
+                .data(nodes)
+                .enter()
+                .append('text')
+                .attr('class', d => d.type === 'file' || d.type === 'class' ? 'container-label' : 'node-label')
+                .text(d => {
+                    const maxLength = d.type === 'file' ? 25 : d.type === 'class' ? 20 : 15;
+                    return d.name.length > maxLength ? d.name.substring(0, maxLength - 3) + '...' : d.name;
                 })
-                .attr('dy', 4)
-                .text(d => d.name.length > 25 ? d.name.substring(0, 22) + '...' : d.name);
+                .style('pointer-events', 'none');
+                
+            updatePositions();
+        }
+        
+        function updatePositions() {
+            // Use transforms instead of setting cx/cy attributes for better performance
+            if (circleElements) {
+                circleElements.attr('transform', d => `translate(${d.x},${d.y})`);
+            }
             
-            // Update positions
-            simulation.on('tick', () => {
-                // Update containers
-                containers.each(function(d) {
-                    const children = nodes.filter(n => n.parent && n.parent.id === d.id);
-                    if (children.length > 0) {
-                        const padding = d.type === 'file' ? 40 : 30;
-                        const minX = Math.min(...children.map(c => c.x), d.x) - padding;
-                        const minY = Math.min(...children.map(c => c.y), d.y) - padding;
-                        const maxX = Math.max(...children.map(c => c.x), d.x) + padding;
-                        const maxY = Math.max(...children.map(c => c.y), d.y) + padding;
-                        
-                        d3.select(this)
-                            .attr('x', minX)
-                            .attr('y', minY)
-                            .attr('width', maxX - minX)
-                            .attr('height', maxY - minY);
-                    }
-                });
-                
-                // Update links with error handling
-                link
-                    .attr('x1', d => {
-                        const source = typeof d.source === 'object' ? d.source : nodeMap.get(d.source);
-                        return source ? source.x : 0;
-                    })
-                    .attr('y1', d => {
-                        const source = typeof d.source === 'object' ? d.source : nodeMap.get(d.source);
-                        return source ? source.y : 0;
-                    })
-                    .attr('x2', d => {
-                        const target = typeof d.target === 'object' ? d.target : nodeMap.get(d.target);
-                        return target ? target.x : 0;
-                    })
-                    .attr('y2', d => {
-                        const target = typeof d.target === 'object' ? d.target : nodeMap.get(d.target);
-                        return target ? target.y : 0;
-                    });
-                
-                // Update nodes
-                node.attr('transform', d => `translate(${d.x},${d.y})`);
-            });
-        }
-        
-        // Drag functions
-        function dragstarted(event, d) {
-            if (!event.active && forceEnabled) simulation.alphaTarget(0.3).restart();
-            d.fx = d.x;
-            d.fy = d.y;
-        }
-        
-        function dragged(event, d) {
-            d.fx = event.x;
-            d.fy = event.y;
-        }
-        
-        function dragended(event, d) {
-            if (!event.active && forceEnabled) simulation.alphaTarget(0);
-            if (!event.sourceEvent.shiftKey) {
-                d.fx = null;
-                d.fy = null;
+            if (labelElements) {
+                labelElements.attr('transform', d => `translate(${d.x},${d.y})`);
+            }
+            
+            // Only update connections if they're visible
+            if (connectionElements && showConnections) {
+                connectionElements
+                    .attr('x1', d => d.source.x)
+                    .attr('y1', d => d.source.y)
+                    .attr('x2', d => d.target.x)
+                    .attr('y2', d => d.target.y);
             }
         }
         
-        // Control functions
-        function zoomIn() {
-            svg.transition().duration(300).call(zoom.scaleBy, 1.3);
-        }
-        
-        function zoomOut() {
-            svg.transition().duration(300).call(zoom.scaleBy, 0.7);
-        }
-        
-        function resetZoom() {
-            svg.transition().duration(300).call(zoom.transform, d3.zoomIdentity);
-        }
-        
-        function centerGraph() {
-            const bounds = g.node().getBBox();
-            const fullWidth = window.innerWidth;
-            const fullHeight = window.innerHeight;
-            const width = bounds.width;
-            const height = bounds.height;
-            const midX = bounds.x + width / 2;
-            const midY = bounds.y + height / 2;
+        // Control functions for physics management
+        function togglePhysics() {
+            physicsEnabled = !physicsEnabled;
+            const btn = document.getElementById('physicsBtn');
+            const checkbox = document.getElementById('enablePhysics');
             
-            const scale = 0.8 / Math.max(width / fullWidth, height / fullHeight);
-            const translate = [fullWidth / 2 - scale * midX, fullHeight / 2 - scale * midY];
-            
-            svg.transition().duration(500).call(
-                zoom.transform,
-                d3.zoomIdentity.translate(translate[0], translate[1]).scale(scale)
-            );
-        }
-        
-        function toggleForce() {
-            forceEnabled = !forceEnabled;
-            if (forceEnabled) {
-                simulation.restart();
+            if (physicsEnabled) {
+                // Unlock nodes for physics
+                nodes.forEach(node => {
+                    node.fx = null;
+                    node.fy = null;
+                });
+                simulation?.alpha(0.1).restart();
+                btn.classList.add('active');
+                btn.textContent = '⚡ Physics ON';
+                checkbox.checked = true;
             } else {
-                simulation.stop();
+                // Lock nodes in current position
+                nodes.forEach(node => {
+                    node.fx = node.x;
+                    node.fy = node.y;
+                });
+                simulation?.stop();
+                btn.classList.remove('active');
+                btn.textContent = '⚡ Physics OFF';
+                checkbox.checked = false;
+            }
+        }
+        
+        function resetPositions() {
+            const centerX = window.innerWidth / 2;
+            const centerY = window.innerHeight / 2;
+            const boundaryRadius = Math.min(window.innerWidth, window.innerHeight) * 0.48;
+            
+            const nodeCount = nodes.length;
+            
+            // Use golden ratio spiral for optimal distribution with much more spacing
+            nodes.forEach((node, index) => {
+                const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+                const theta = index * goldenAngle;
+                const maxRadius = boundaryRadius * 0.9;
+                const spiralRadius = Math.sqrt(index / nodeCount) * maxRadius;
+                
+                // Add randomization to prevent overlapping
+                const randomOffset = (Math.random() - 0.5) * 50;
+                const adjustedRadius = spiralRadius + randomOffset;
+                
+                node.x = centerX + Math.cos(theta) * adjustedRadius;
+                node.y = centerY + Math.sin(theta) * adjustedRadius;
+                node.fx = null; // Unlock temporarily
+                node.fy = null;
+            });
+            
+            if (simulation && physicsEnabled) {
+                simulation.alpha(0.3).restart();
+                // Auto-lock after settling
+                setTimeout(() => {
+                    nodes.forEach(node => {
+                        node.fx = node.x;
+                        node.fy = node.y;
+                    });
+                }, 3000);
+            } else {
+                // If physics disabled, lock immediately in new positions
+                nodes.forEach(node => {
+                    node.fx = node.x;
+                    node.fy = node.y;
+                });
+                updatePositions();
             }
         }
         
         function showNodeInfo(event, d) {
+            // Calculate connections for this node
+            const connectionsOut = connections.filter(c => c.source.id === d.id || c.source === d.id);
+            const connectionsIn = connections.filter(c => c.target.id === d.id || c.target === d.id);
+            
             let info = `
                 <strong>Name:</strong> ${d.name}<br>
                 <strong>Type:</strong> ${d.type}<br>
                 <strong>File:</strong> ${d.file || 'N/A'}<br>
                 <strong>Line:</strong> ${d.line || 'N/A'}<br>
-                ${d.parent ? `<strong>Parent:</strong> ${d.parent.name}` : ''}
             `;
             
-            // Count different types of connections
-            let callsOut = 0, callsIn = 0;
-            let createsOut = 0, createsIn = 0;
-            let inheritsFrom = 0, inheritedBy = 0;
+            if (d.parent) {
+                info += `<strong>Parent:</strong> ${d.parent.name}<br>`;
+            }
             
-            links.forEach(link => {
-                const source = typeof link.source === 'object' ? link.source.id : link.source;
-                const target = typeof link.target === 'object' ? link.target.id : link.target;
-                
-                if (source === d.id) {
-                    if (link.type === 'calls') callsOut++;
-                    if (link.type === 'instantiates') createsOut++;
-                    if (link.type === 'inherits') inheritsFrom++;
-                }
-                if (target === d.id) {
-                    if (link.type === 'calls') callsIn++;
-                    if (link.type === 'instantiates') createsIn++;
-                    if (link.type === 'inherits') inheritedBy++;
-                }
+            if (d.children && d.children.length > 0) {
+                info += `<strong>Children:</strong> ${d.children.length}<br>`;
+            }
+            
+            // Group connections by type
+            const outgoing = {};
+            const incoming = {};
+            
+            connectionsOut.forEach(c => {
+                outgoing[c.type] = (outgoing[c.type] || 0) + 1;
             });
             
-            // Add connection summary
-            info += '<br><br><strong>Connections:</strong><br>';
-            if (callsOut > 0) info += `• Calls ${callsOut} function(s)<br>`;
-            if (callsIn > 0) info += `• Called by ${callsIn} function(s)<br>`;
-            if (createsOut > 0) info += `• Creates/uses ${createsOut} class(es)<br>`;
-            if (createsIn > 0) info += `• Used by ${createsIn} function(s)<br>`;
-            if (inheritsFrom > 0) info += `• Inherits from ${inheritsFrom} class(es)<br>`;
-            if (inheritedBy > 0) info += `• Inherited by ${inheritedBy} class(es)<br>`;
+            connectionsIn.forEach(c => {
+                incoming[c.type] = (incoming[c.type] || 0) + 1;
+            });
             
-            // Add external dependencies info if available
-            if (graphData.external_dependencies) {
-                const nodeExtDeps = graphData.external_dependencies.filter(dep => dep.source === d.id);
-                if (nodeExtDeps.length > 0) {
-                    info += `<br><strong>External Dependencies:</strong><br>`;
-                    nodeExtDeps.forEach(dep => {
-                        info += `• ${dep.target} (${dep.type})<br>`;
-                    });
-                }
+            if (Object.keys(outgoing).length > 0 || Object.keys(incoming).length > 0) {
+                info += '<br><strong>Connections:</strong><br>';
+                
+                Object.entries(outgoing).forEach(([type, count]) => {
+                    info += `• ${type}: ${count} outgoing<br>`;
+                });
+                
+                Object.entries(incoming).forEach(([type, count]) => {
+                    info += `• ${type}: ${count} incoming<br>`;
+                });
             }
             
             document.getElementById('nodeInfo').innerHTML = info;
             
-            // Highlight connected nodes and show cross-file connections
-            const connectedNodeIds = new Set([d.id]);
-            const crossFileConnections = new Set();
+            // Highlight this node and its connections
+            highlightNode(d);
+        }
+        
+        function highlightNode(targetNode) {
+            // Reset all styles
+            resetHighlight();
             
-            links.forEach(link => {
-                const source = typeof link.source === 'object' ? link.source.id : link.source;
-                const target = typeof link.target === 'object' ? link.target.id : link.target;
+            // Find connected nodes
+            const connectedNodeIds = new Set([targetNode.id]);
+            const relevantConnections = [];
+            
+            connections.forEach(connection => {
+                const sourceId = connection.source.id || connection.source;
+                const targetId = connection.target.id || connection.target;
                 
-                if (source === d.id) {
-                    connectedNodeIds.add(target);
-                    // Check if it's a cross-file connection
-                    const targetNode = nodeMap.get(target);
-                    if (targetNode && targetNode.file !== d.file && link.type !== 'contains') {
-                        crossFileConnections.add(link);
-                    }
-                }
-                if (target === d.id) {
-                    connectedNodeIds.add(source);
-                    // Check if it's a cross-file connection
-                    const sourceNode = nodeMap.get(source);
-                    if (sourceNode && sourceNode.file !== d.file && link.type !== 'contains') {
-                        crossFileConnections.add(link);
-                    }
+                if (sourceId === targetNode.id || targetId === targetNode.id) {
+                    connectedNodeIds.add(sourceId);
+                    connectedNodeIds.add(targetId);
+                    relevantConnections.push(connection);
                 }
             });
             
-            // Update node opacity
-            d3.selectAll('.node').style('opacity', n => connectedNodeIds.has(n.id) ? 1 : 0.3);
+            // Highlight relevant nodes
+            circleElements.classed('highlighted', d => d.id === targetNode.id)
+                          .classed('dimmed', d => !connectedNodeIds.has(d.id));
             
-            // Update link styles
-            d3.selectAll('.link')
-                .style('opacity', l => {
-                    const source = typeof l.source === 'object' ? l.source.id : l.source;
-                    const target = typeof l.target === 'object' ? l.target.id : l.target;
-                    return (source === d.id || target === d.id) ? 1 : 0.1;
-                })
-                .style('stroke-width', l => {
-                    // Make cross-file connections thicker
-                    if (crossFileConnections.has(l)) {
-                        return l.type === 'calls' || l.type === 'instantiates' ? 3 : 2;
-                    }
-                    return null; // Use default
+            // Highlight relevant connections
+            if (connectionElements) {
+                connectionElements.classed('highlighted', d => {
+                    const sourceId = d.source.id || d.source;
+                    const targetId = d.target.id || d.target;
+                    return sourceId === targetNode.id || targetId === targetNode.id;
+                }).classed('dimmed', d => {
+                    const sourceId = d.source.id || d.source;
+                    const targetId = d.target.id || d.target;
+                    return sourceId !== targetNode.id && targetId !== targetNode.id;
                 });
+            }
+            
+            // Highlight labels
+            labelElements.classed('dimmed', d => !connectedNodeIds.has(d.id));
         }
         
-        function showTooltip(event, d) {
+        function resetHighlight() {
+            circleElements?.classed('highlighted', false).classed('dimmed', false);
+            connectionElements?.classed('highlighted', false).classed('dimmed', false);
+            labelElements?.classed('dimmed', false);
+        }
+        
+        function showNodeTooltip(event, d) {
             const tooltip = d3.select('.tooltip');
             tooltip.html(`${d.name} (${d.type})`)
+                .style('left', (event.pageX + 10) + 'px')
+                .style('top', (event.pageY - 10) + 'px')
+                .style('opacity', 1);
+        }
+        
+        function showConnectionTooltip(event, d) {
+            const tooltip = d3.select('.tooltip');
+            const sourceName = d.source.name || d.source;
+            const targetName = d.target.name || d.target;
+            tooltip.html(`${sourceName} → ${targetName}<br><em>${d.type}</em>`)
                 .style('left', (event.pageX + 10) + 'px')
                 .style('top', (event.pageY - 10) + 'px')
                 .style('opacity', 1);
@@ -805,23 +1299,99 @@
             d3.select('.tooltip').style('opacity', 0);
         }
         
+        function zoomIn() {
+            svg.transition().duration(300).call(zoom.scaleBy, 1.3);
+        }
+        
+        function zoomOut() {
+            svg.transition().duration(300).call(zoom.scaleBy, 0.7);
+        }
+        
+        function resetZoom() {
+            svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity);
+        }
+        
+        function centerGraph() {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            svg.transition().duration(750).call(
+                zoom.transform,
+                d3.zoomIdentity.translate(width / 2, height / 2).scale(1)
+            );
+        }
+        
+        function toggleConnections() {
+            showConnections = !showConnections;
+            
+            if (connectionElements) {
+                connectionElements.style('display', showConnections ? 'block' : 'none');
+            }
+        }
+        
+        function highlightCrossFileConnections() {
+            if (!connections || connections.length === 0) return;
+            
+            resetHighlight();
+            
+            const crossFileConnections = connections.filter(c => {
+                const source = c.source.file || c.source;
+                const target = c.target.file || c.target;
+                return source !== target;
+            });
+            
+            const involvedNodeIds = new Set();
+            
+            crossFileConnections.forEach(c => {
+                const sourceId = c.source.id || c.source;
+                const targetId = c.target.id || c.target;
+                involvedNodeIds.add(sourceId);
+                involvedNodeIds.add(targetId);
+            });
+            
+            // Highlight cross-file connections and involved nodes
+            circleElements.classed('dimmed', d => !involvedNodeIds.has(d.id));
+            
+            if (connectionElements) {
+                connectionElements.classed('highlighted', d => {
+                    const source = d.source.file || d.source;
+                    const target = d.target.file || d.target;
+                    return source !== target;
+                }).classed('dimmed', d => {
+                    const source = d.source.file || d.source;
+                    const target = d.target.file || d.target;
+                    return source === target;
+                });
+            }
+            
+            labelElements.classed('dimmed', d => !involvedNodeIds.has(d.id));
+            
+            document.getElementById('nodeInfo').innerHTML = `
+                <strong>Cross-File Connections:</strong><br>
+                Found ${crossFileConnections.length} connections between different files.<br><br>
+                <em>These show how different parts of your codebase interact.</em>
+            `;
+        }
+        
         // Search functionality
         document.getElementById('search').addEventListener('input', function(e) {
             const searchTerm = e.target.value.toLowerCase();
             
             if (searchTerm === '') {
-                d3.selectAll('.node').style('opacity', 1);
-                d3.selectAll('.link').style('opacity', 0.4);
+                resetHighlight();
             } else {
-                const matchingNodes = new Set();
+                const matchingNodeIds = new Set();
                 nodes.forEach(node => {
                     if (node.name.toLowerCase().includes(searchTerm)) {
-                        matchingNodes.add(node.id);
+                        matchingNodeIds.add(node.id);
                     }
                 });
                 
-                d3.selectAll('.node').style('opacity', d => matchingNodes.has(d.id) ? 1 : 0.2);
-                d3.selectAll('.link').style('opacity', 0.1);
+                circleElements.classed('dimmed', d => !matchingNodeIds.has(d.id));
+                labelElements.classed('dimmed', d => !matchingNodeIds.has(d.id));
+                
+                if (connectionElements) {
+                    connectionElements.classed('dimmed', true);
+                }
             }
         });
         
@@ -831,7 +1401,14 @@
             if (checkbox) {
                 checkbox.addEventListener('change', function(e) {
                     const typeKey = type.toLowerCase().slice(0, -1);
-                    d3.selectAll('.node').each(function(d) {
+                    
+                    circleElements.each(function(d) {
+                        if (d.type === typeKey) {
+                            d3.select(this).style('display', e.target.checked ? 'block' : 'none');
+                        }
+                    });
+                    
+                    labelElements.each(function(d) {
                         if (d.type === typeKey) {
                             d3.select(this).style('display', e.target.checked ? 'block' : 'none');
                         }
@@ -840,122 +1417,113 @@
             }
         });
         
-        // Update statistics
         function updateStats() {
             if (!graphData) return;
             
+            const nodeCount = nodes.length;
+            const isLargeGraph = nodeCount > 100;
+            const isMassiveGraph = nodeCount > 500;
+            
             const stats = {
-                nodes: nodes.length,
-                edges: links.length,
+                nodes: nodeCount,
+                connections: connections.length,
                 files: nodes.filter(n => n.type === 'file').length,
                 classes: nodes.filter(n => n.type === 'class').length,
                 methods: nodes.filter(n => n.type === 'method').length,
                 functions: nodes.filter(n => n.type === 'function').length,
-                crossFileConnections: 0
+                crossFileConnections: connections.filter(c => {
+                    const source = c.source.file || c.source;
+                    const target = c.target.file || c.target;
+                    return source !== target;
+                }).length
             };
             
-            // Count cross-file connections
-            links.forEach(link => {
-                if (link.type !== 'contains') {
-                    const sourceNode = nodeMap.get(link.source.id || link.source);
-                    const targetNode = nodeMap.get(link.target.id || link.target);
-                    if (sourceNode && targetNode && sourceNode.file !== targetNode.file) {
-                        stats.crossFileConnections++;
-                    }
-                }
-            });
-            
             let statsHtml = `
-                <strong>Statistics:</strong><br>
-                Nodes: ${stats.nodes}<br>
-                Edges: ${stats.edges}<br>
-                Files: ${stats.files}<br>
-                Classes: ${stats.classes}<br>
-                Methods: ${stats.methods}<br>
-                Functions: ${stats.functions}<br>
-                Cross-file links: ${stats.crossFileConnections}
+                <div class="section-title">Statistics</div>
+                📊 Nodes: ${stats.nodes}<br>
+                🔗 Connections: ${stats.connections}<br>
+                📄 Files: ${stats.files}<br>
+                🏗️ Classes: ${stats.classes}<br>
+                ⚙️ Methods: ${stats.methods}<br>
+                🔧 Functions: ${stats.functions}<br>
+                🌐 Cross-file: ${stats.crossFileConnections}<br>
+                ${isMassiveGraph ? '🚀 <span style="color: #ff6b6b;">Massive Graph Mode</span>' : 
+                  isLargeGraph ? '⚡ <span style="color: #ffa500;">Large Graph Mode</span>' : 
+                  '✨ Standard Mode'}
             `;
             
-            // Add external dependencies if present
+            if (simulation) {
+                const alpha = simulation.alpha();
+                const status = alpha < 0.005 ? 'Settled' : alpha < 0.05 ? 'Cooling' : 'Active';
+                statsHtml += `<br>🎯 Physics: ${status}`;
+            }
+            
             if (graphData.external_dependencies && graphData.external_dependencies.length > 0) {
                 const uniqueExternal = new Set(graphData.external_dependencies.map(d => d.target));
-                statsHtml += `<br>External deps: ${uniqueExternal.size}`;
+                statsHtml += `<br>📦 External deps: ${uniqueExternal.size}`;
             }
             
             document.getElementById('stats').innerHTML = statsHtml;
         }
         
-        function highlightCrossFileConnections() {
-            // Find all cross-file connections
-            const crossFileLinks = [];
-            const involvedNodes = new Set();
-            
-            links.forEach(link => {
-                if (link.type !== 'contains') {
-                    const sourceNode = nodeMap.get(link.source.id || link.source);
-                    const targetNode = nodeMap.get(link.target.id || link.target);
-                    if (sourceNode && targetNode && sourceNode.file !== targetNode.file) {
-                        crossFileLinks.push(link);
-                        involvedNodes.add(sourceNode.id);
-                        involvedNodes.add(targetNode.id);
-                    }
-                }
-            });
-            
-            // Update visual styles
-            d3.selectAll('.node')
-                .style('opacity', n => involvedNodes.has(n.id) ? 1 : 0.2);
-            
-            d3.selectAll('.link')
-                .style('opacity', l => {
-                    if (l.type === 'contains') return 0.1;
-                    
-                    const sourceNode = nodeMap.get(l.source.id || l.source);
-                    const targetNode = nodeMap.get(l.target.id || l.target);
-                    if (sourceNode && targetNode && sourceNode.file !== targetNode.file) {
-                        return 1;
-                    }
-                    return 0.05;
-                })
-                .style('stroke-width', l => {
-                    const sourceNode = nodeMap.get(l.source.id || l.source);
-                    const targetNode = nodeMap.get(l.target.id || l.target);
-                    if (sourceNode && targetNode && sourceNode.file !== targetNode.file && l.type !== 'contains') {
-                        return 3;
-                    }
-                    return null;
-                });
-            
-            // Update info panel
-            document.getElementById('nodeInfo').innerHTML = `
-                <strong>Cross-File Connections:</strong><br>
-                Found ${crossFileLinks.length} connections between different files.<br><br>
-                <em>These connections show how different parts of your codebase interact with each other. 
-                Click on any node to see its specific cross-file dependencies.</em>
-            `;
-        }
-        
-        // Handle window resize
+        // Optimized resize handler with debouncing
+        let resizeTimeout;
         window.addEventListener('resize', () => {
-            const width = window.innerWidth;
-            const height = window.innerHeight;
-            svg.attr('width', width).attr('height', height);
-            if (simulation) {
-                simulation.force('center', d3.forceCenter(width / 2, height / 2));
-                simulation.alpha(0.3).restart();
-            }
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                const width = window.innerWidth;
+                const height = window.innerHeight;
+                svg?.attr('width', width).attr('height', height);
+                
+                const centerX = width / 2;
+                const centerY = height / 2;
+                const boundaryRadius = Math.min(width, height) * 0.48;
+                
+                // Update boundary circle
+                if (boundaryCircle) {
+                    boundaryCircle
+                        .attr('cx', centerX)
+                        .attr('cy', centerY)
+                        .attr('r', boundaryRadius);
+                }
+                
+                // Gently update simulation forces
+                if (simulation && physicsEnabled) {
+                    const nodeCount = nodes.length;
+                    const adaptiveGravity = Math.max(0.002, gravityStrength / Math.sqrt(nodeCount / 5));
+                    
+                    simulation
+                        .force('center', d3.forceCenter(centerX, centerY).strength(adaptiveGravity))
+                        .force('boundary', boundaryForce(centerX, centerY, boundaryRadius))
+                        .alpha(0.1) // Gentle restart
+                        .restart();
+                }
+            }, 250); // Debounce resize events
         });
         
         // Initialize with demo message
         document.getElementById('nodeInfo').innerHTML = `
-            <p>Load a <code>code_graph.json</code> file to visualize your code structure.</p>
-            <p>The graph will show:</p>
-            <ul style="font-size: 13px; margin-left: -20px;">
-                <li>Files as containers</li>
-                <li>Classes within files</li>
-                <li>Methods and functions</li>
-                <li>Import relationships</li>
-                <li>Inheritance hierarchies</li>
+            <p>🚀 Load a <code>code_graph.json</code> file to explore your code with <strong>stable physics visualization</strong>!</p>
+            <br>
+            <p><strong>🔧 Key Features:</strong></p>
+            <ul style="font-size: 13px; margin-left: -15px; line-height: 1.6;">
+                <li>✅ Nodes automatically lock in place when settled</li>
+                <li>✅ No dragging or endless movement</li>
+                <li>✅ Physics stops after optimal layout is found</li>
+                <li>✅ Much stronger repulsion forces (3x stronger)</li>
+                <li>✅ Larger collision padding (40-80px)</li>
+                <li>✅ Better initial positioning with randomization</li>
+                <li>✅ Adaptive spacing for different graph sizes</li>
+                <li>✅ Faster settling (3-6 seconds max)</li>
+            </ul>
+            <br>
+            <p><strong>💡 How It Works:</strong></p>
+            <ul style="font-size: 13px; margin-left: -15px; line-height: 1.6;">
+                <li>🎯 Physics runs briefly to find optimal layout</li>
+                <li>🔒 Nodes automatically lock in final positions</li>
+                <li>👆 Click nodes to see info (no dragging)</li>
+                <li>🔄 Use "Scatter" to randomize and re-settle</li>
+                <li>⚡ Toggle physics to unlock/lock positions</li>
             </ul>
         `;
     </script>
